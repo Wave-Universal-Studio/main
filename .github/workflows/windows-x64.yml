@@ -62,7 +62,7 @@ jobs:
           dotnet test --solution WaveStudio.slnx -c ${{ matrix.configuration }} --no-build -- --culture pt-BR --explicit off --seed ${{ matrix.seed }} --timeout 165s --long-running 10 --diagnostic --diagnostic-output-directory "$diagnostics"
       - name: Arquivar diagnósticos
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: diagnosticos-${{ matrix.configuration }}
           path: ${{ runner.temp }}/wavestudio-diagnostics

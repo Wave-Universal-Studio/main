@@ -89,7 +89,7 @@ jobs:
           Get-ChildItem -Path $outDir | Format-Table Name, Length -AutoSize
 
       - name: Publicar artefato do pacote portável
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wavestudio-portavel-win-x64
           path: ${{ runner.temp }}/wavestudio-release/*
