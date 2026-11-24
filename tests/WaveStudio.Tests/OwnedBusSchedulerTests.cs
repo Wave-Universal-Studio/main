@@ -186,7 +186,7 @@ public sealed class OwnedBusSchedulerTests
         public int Releases { get; private set; }
         public bool Disposed { get; private set; }
 
-        public uint NextPacketSize() => Disposed ? 0 : 480;
+        public uint NextPacketSize() => Disposed ? 0u : 480u;
         public WasapiCaptureBuffer GetBuffer() =>
             new(0, memory, 480, 0, position, Clock);
         public int ReleaseBuffer(uint frames)
