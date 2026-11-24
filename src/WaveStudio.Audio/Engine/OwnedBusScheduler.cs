@@ -18,6 +18,7 @@ internal sealed class OwnedBusScheduler : IDisposable
     private readonly OwnedBusCaptureSlot[] captures;
     private readonly OwnedBusRenderSlot[] renders;
     private readonly float[] discard;
+    private readonly bool personalBound, streamBound;
     private readonly IDisposable activityLease;
     private long lastBlock = -1;
     private long lastTime;
@@ -50,12 +51,12 @@ internal sealed class OwnedBusScheduler : IDisposable
             source.Endpoint.Validate();
             if (source.Endpoint.Generation != generation || source.Endpoint.Direction != EndpointDirection.Capture)
                 throw new ArgumentException("Fonte de captura com identidade ou geração incorreta.", nameof(sources));
-            if (captureSnapshot.Count(c => c.Source.Endpoint == source.Endpoint && c.Source.Format == source.Format &&
-                  ReferenceEquals(c.Owner, captureSnapshot.First(x => x.Source.Endpoint == source.Endpoint).Owner)) != 1)
+            if (captureSnapshot.Count(c => Equals(c.Source, source) && c.Owner is not null) != 1)
                 throw new ArgumentException("Cada fonte precisa de um owner único com formato idêntico.", nameof(captures));
             for (int j = i + 1; j < sourceSnapshot.Length; j++)
-                if (source.Endpoint == sourceSnapshot[j].Endpoint)
-                    throw new ArgumentException("Fonte de captura duplicada.", nameof(sources));
+                if (source.Endpoint == sourceSnapshot[j].Endpoint ||
+                    ReferenceEquals(captureSnapshot[i].Owner, captureSnapshot[j].Owner))
+                    throw new ArgumentException("Fonte ou owner de captura duplicado.", nameof(sources));
         }
         for (int i = 0; i < renderSnapshot.Length; i++)
         {
@@ -80,6 +81,8 @@ internal sealed class OwnedBusScheduler : IDisposable
             this.bridge = bridge;
             this.captures = captureSnapshot;
             this.renders = renderSnapshot;
+            personalBound = renderSnapshot.Any(slot => slot.Bus == MixBus.Personal);
+            streamBound = renderSnapshot.Any(slot => slot.Bus == MixBus.Stream);
             discard = new float[checked(format.SampleRate / 100 * format.Channels)];
             mixer = new(bridge);
             mixer.Start(generation, format, sourceSnapshot, cancellation: cancellation);
@@ -118,9 +121,9 @@ internal sealed class OwnedBusScheduler : IDisposable
             }
 
             // Um bus sem saída vinculada é consumido e descartado, jamais roteado por engano.
-            if (!renders.Any(x => x.Bus == MixBus.Personal))
+            if (!personalBound)
                 bridge.TryReadOutput(MixBus.Personal, block, discard, out _);
-            if (!renders.Any(x => x.Bus == MixBus.Stream))
+            if (!streamBound)
                 bridge.TryReadOutput(MixBus.Stream, block, discard, out _);
 
             foreach (var output in renders)
