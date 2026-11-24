@@ -12,9 +12,23 @@ Rodada de 24/11/2026 no Windows 10 Pro x64, build 19045, sobre a `main` sincroni
 | Períodos de dispositivo | Consulta WASAPI sem Initialize ou Start confirmou float32 a 48 kHz nos quatro endpoints do cabo simples. Headset e cabo estéreo, FIFINE mono. Período padrão de 10 ms em todos. Mínimo exclusivo informado de 3 ms no headset, FIFINE e captura do cabo, e 2 ms na reprodução do cabo. Buffer inicializado e latência do stream ficam indisponíveis nessa consulta. |
 | Driver e boot | Driver assinado VB-Audio 3.5.2.0. Evento Kernel-Boot 27 de 24/11 às 00:19:37, UTC−03, com `BootType=0`, consistente com o horário de boot do Windows e posterior à instalação de 19/11. O evento mais recente, às 08:25:49, teve `BootType=1`. A instância ativa e saudável tem dois pinos de reprodução e um de captura. A outra instância permanece em Código 10, sem pino ativo associado. |
 | Prontidão dos dois fluxos externos | Cabo simples disponível. Pareamento e saúde dos quatro alvos confirmados. Os seis padrões do Windows estão fora do cabo. Navegador → cabo → headset e microfone → cabo → OBS passaram na consulta de compatibilidade. A+B ausente. OBS portátil 33.0.1 existente com assinatura Authenticode válida de OBS Project, LLC. O SHA-256 do WAV local de 1 kHz coincide com o histórico do preparo. |
-| Relógios, reconexão e áudio das rotas | A descoberta por filtro exato encontrou um método Explicit para a coleta de clock em razão nominal e um para a prova sequencial do cabo simples. A execução e a reconexão assistida aguardam confirmação do operador. Nesta rodada houve somente consulta de capacidades e leituras de metadados/medidores. |
+| Relógios, reconexão e áudio das rotas | A descoberta por filtro exato encontrou um método Explicit para a coleta de clock em razão nominal e um para a prova sequencial do cabo simples. Na primeira rodada houve somente consulta de capacidades e leituras de metadados e medidores. A autorização posterior e o resultado do novo preflight estão na seção de continuação. |
 
 O tempo de atualização do medidor e o período de dispositivo são grandezas diferentes de latência acústica. Na preparação histórica parada do FIFINE e headset, o Windows retornou buffer de 1.056 frames por lado e `GetStreamLatency=0` com ambos os streams parados. O retorno não mede o atraso ponta a ponta. A prova acústica precisa de um estímulo conhecido e de referência de tempo comum, com captura da resposta e distribuição de atrasos. [Contrato de latência do WASAPI](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient-getstreamlatency).
+
+## Continuação autorizada em 24/11/2026
+
+A preparação usou um worktree separado, fixado em `9b12b72` e com a mesma base funcional Release `4bab6f2`. Os hashes da cópia do apphost e das DLLs de testes, áudio e desktop coincidiram com os binários usados na regressão de 959 testes. A descoberta no worktree encontrou exatamente o método Explicit de clock e o de cabo simples pelos filtros exatos. Provas anteriores e regressão ficaram preservadas.
+
+| Verificação | Evidência da continuação |
+| --- | --- |
+| Isolamento da rota | O preflight do próprio runner confirmou os quatro alvos ativos e o pareamento exato. Os padrões permaneceram fora do cabo, sem produtor ativo nos pinos de render do VB-CABLE no momento da consulta. |
+| Preservação | Os snapshots locais antes e depois coincidiram nos seis papéis de dispositivo padrão e no volume, mute e balanço disponíveis dos nove endpoints ativos. Os binários, dados de dispositivos e snapshots ficam fora do versionamento. |
+| Coleta de clock | **Bloqueada antes de Start.** Leituras de ocupação encontraram duas sessões de captura ativas no microfone selecionado. O runner autorizado ficou preparado para uma coleta de até 10 s, em razão nominal, com saída SILENT e sem persistência de áudio. |
+| Reconexão USB | **Aguardando ação física.** A observação usa o medidor Core Audio e a seleção original, preparada para registrar remoção, retorno do endpoint, recuperação do medidor e comparação dos seis padrões, sem abrir um stream. |
+| Navegador e OBS | **Aguardando operador e condições de áudio.** O controle visual de janelas estava indisponível nesta sessão. O runner exige confirmação pessoal no console, aplicação observável das rotas temporárias, ausência de transmissão e verificação da restauração. |
+
+A autorização desta etapa foi registrada, mas a janela física ainda depende de microfone livre e presença do operador para os atos físicos e a confirmação local. As sessões em andamento ficaram abertas. Nenhuma tentativa Explicit foi consumida e a aceitação física das etapas permanece em aberto. O escopo da Fase 5 continua sendo o caminho interno validado em simulação.
 
 ## Pendências por fase
 

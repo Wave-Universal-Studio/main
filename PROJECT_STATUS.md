@@ -4,7 +4,7 @@ Atualizado em 24/11/2026.
 
 ## Validação integrada local — 24/11/2026
 
-Na base `4bab6f2`, o Release x64 do Windows 10 passou com 959 testes comuns, zero falhas, sete Explicit excluídos. A leitura dos medidores reais completou 120 s, com 1.200 atualizações e zero falhas. O Windows registra boot completo posterior à instalação do VB-CABLE. O cabo simples passou na pré-verificação dos dois fluxos, com os padrões do Windows fora do cabo e o Código 10 restrito à instância secundária sem pino ativo. A coleta de sincronização, a reconexão assistida e o áudio da prova externa dependem da confirmação do operador. [Evidências e pendências da F0 à F5](docs/PHYSICAL_VALIDATION.md).
+Na base `4bab6f2`, o Release x64 do Windows 10 passou com 959 testes comuns, zero falhas, sete Explicit excluídos. A leitura dos medidores reais completou 120 s, com 1.200 atualizações e zero falhas. O Windows registra boot completo posterior à instalação do VB-CABLE. O cabo simples passou na pré-verificação dos dois fluxos, com os padrões do Windows fora do cabo e o Código 10 restrito à instância secundária sem pino ativo. A coleta de sincronização, a reconexão assistida e o áudio da prova externa foram autorizados. Na preparação isolada, duas sessões de captura ativas impediram o início, e a operação assistida ficou pendente. [Evidências e pendências da F0 à F5](docs/PHYSICAL_VALIDATION.md).
 
 ## Implementado — F5-I2C2-OWNED-BUS-SCHEDULER, 24/11/2026
 
