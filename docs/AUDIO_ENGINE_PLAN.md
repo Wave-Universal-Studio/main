@@ -1,5 +1,11 @@
 # Motor de áudio — fundação, conversão e relógios
 
+## F5-I2C1-OWNED-WASAPI-PACKET-STEPS (em revisão)
+
+A costura nativa por etapas usa owners MTA em volta de IAudioCaptureClient/IAudioRenderClient já adquiridos. O owner de captura obtém pacote, confirma direção/timestamp/posição, converte o span nativo para PCM do mixer e libera o buffer em `finally`, inclusive em erro de flags. O owner de render solicita buffer de 10 ms, prepara o pacote Personal/Stream e solta com flag SILENT se o ticket estiver inválido. Erros de ReleaseBuffer invalidam os tickets e retêm recursos porque não se conhece a conclusão física da entrega.
+
+Não existe ainda loop contínuo ou controle de clock entre duas saídas nativas, pois os pacotes precisam ser agendados por um único clock compartilhado antes de ativar render. Sem alteração dos dispositivos padrão, sem instalação de driver e sem execução automática em WinForms.
+
 ## F5-I2B-NATIVE-PCM-PACKET-ADAPTER (integrada)
 
 Captura: o owner WASAPI futuro obtém `WasapiCaptureBuffer`, valida QPC, identidade e flags e transforma um pacote de 10 ms em bytes; o adaptador `WasapiCaptureBlockAdapter` valida o formato nativo conhecido e decodifica para float32 normalizado, sem alocar a cada pacote. Entrada SILENT sem conteúdo vira zeros. Entrada com dados truncados, timestamp invalido ou descontinuidade não entra no barramento.

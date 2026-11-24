@@ -2,6 +2,12 @@
 
 ## Em desenvolvimento
 
+### 2026-11-24 — F5-I2C1-OWNED-WASAPI-PACKET-STEPS (em revisão)
+
+- Passos de captura/render com propriedade de thread MTA para buffers nativos já obtidos por consentimento, sem `Start`/serviço automático.
+- Verificação de QPC, identidade, flags, cancelamento, release garantido e isolamento de recursos em ReleaseBuffer incerto.
+- Oito testes novos com pacotes COM simulados, sem dispositivos físicos, pendentes de CI Windows x64.
+
 ### 2026-11-24 — F5-I2B-NATIVE-PCM-PACKET-ADAPTER (integrada)
 
 - Adaptação de pacotes PCM16/float32 WASAPI para blocos float32 do mixer e codificação inversa com saturação segura.

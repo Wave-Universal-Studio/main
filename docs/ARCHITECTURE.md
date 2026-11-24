@@ -1,5 +1,11 @@
 # Arquitetura do Wave Studio
 
+## F5-I2C1-OWNED-WASAPI-PACKET-STEPS (em revisão)
+
+`WasapiBusCaptureOwnerStep` e `WasapiBusRenderOwnerStep` são proprietários dos serviços `IWasapiCapturePackets` e `IWasapiRenderPackets` já abertos. Verificam `MTA` e identidade da thread criadora em toda operação, copiam os dados somente enquanto o buffer nativo está adquirido e chamam ReleaseBuffer com o número correto de frames (ou SILENT para render não autorizado/indisponível). Uma falha de liberação é tratada como recurso retido: não descartar o wrapper COM e invalidar a ponte de buffers PCM para impedir publicação tardia.
+
+O filtro de QPC rejeita instantes futuros/antigos/não monotônicos e posições de captura regressivas, além de pacotes de tamanho/flags incorretos. Ele não comprova relógios de dois endpoints sincronizados nem deriva/drift; owner/scheduler nativo futuro precisa aproveitar `WasapiRunningClock` e `WasapiClockAdapter` para a prova temporal completa. Sem `IAudioClient.Start`, sem threads próprias e sem captura/prova física.
+
 ## F5-I2B-NATIVE-PCM-PACKET-ADAPTER (integrada)
 
 `WasapiCaptureBlockAdapter` recebe buffers já verificados pelo owner externo e os converte com `PcmFloatConverter` para blocos de 10 ms, aceitando somente PCM16/float32 LE e formatos `WasapiPcm.Validate` (44,1/48 kHz, mono/estéreo). Frames incompletos, endpoints/gerações incorretos, descontinuidade, timestamp ruim ou flags desconhecidas são recusados. SILENT aceita ponteiro nulo/ausência de bytes e gera zeros. Não abre `IAudioClient`, não lê QPC nem libera pacotes de COM; tais garantias pertencem ao owner de captura.
