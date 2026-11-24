@@ -1,5 +1,11 @@
 # Arquitetura do Wave Studio
 
+## F5-I2C2-OWNED-BUS-SCHEDULER (em revisão)
+
+`OwnedBusScheduler` une `WasapiBusCaptureOwnerStep`, `BusMixSession`, `BoundedBusPcmTransport` e `WasapiBusRenderOwnerStep`, com `TransportActivityGuard`. Todos os owners são criados e usados previamente na mesma thread MTA; o scheduler não cria threads, não chama `IAudioClient.Start` e não usa dispositivos por conta própria. Um passo oferece pacotes de captura já adquiridos, soma PCM no mix interno e consome saídas Personal/Stream já preparadas. Destino sem binding é drenado e descartado, nunca enviado a uma saída alternativa.
+
+O agendador exige índice de bloco consecutivo e clock injetado monotônico, falhando fechado em lacuna, expiração ou falha de owner. Ele **não sincroniza relógios físicos** nem prova jitter/drift entre dispositivos; o backend futuro deve apresentar clock comum observável. Stop primeiro invalida o motor e a ponte; depois libera owners na MTA. Se ReleaseBuffer estiver incerto, o guard permanece retido e precisa de recuperação controlada. Sem ativação automática de captura ou render e sem rota externa configurável nesta etapa.
+
 ## F5-I2C1-OWNED-WASAPI-PACKET-STEPS (integrada)
 
 `WasapiBusCaptureOwnerStep` e `WasapiBusRenderOwnerStep` são proprietários dos serviços `IWasapiCapturePackets` e `IWasapiRenderPackets` já abertos. Verificam `MTA` e identidade da thread criadora em toda operação, copiam os dados somente enquanto o buffer nativo está adquirido e chamam ReleaseBuffer com o número correto de frames (ou SILENT para render não autorizado/indisponível). Uma falha de liberação é tratada como recurso retido: não descartar o wrapper COM e invalidar a ponte de buffers PCM para impedir publicação tardia.
