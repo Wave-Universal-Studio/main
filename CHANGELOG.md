@@ -2,6 +2,12 @@
 
 ## Em desenvolvimento
 
+### 2026-11-24 — F5-I2C2-OWNED-BUS-SCHEDULER (em revisão)
+
+- Scheduler opt-in de passos MTA: captura autorizada → mix PCM Personal/Stream → saída somente em owner já preparado.
+- Relógio de bloco monotônico, identidade, geração, Stop idempotente, exclusividade de operação e fail-closed.
+- Cinco testes com fontes/saídas simuladas. Nenhuma conexão física automática adicionada.
+
 ### 2026-11-24 — F5-I2C1-OWNED-WASAPI-PACKET-STEPS (integrada)
 
 - Passos de captura/render com propriedade de thread MTA para buffers nativos já obtidos por consentimento, sem `Start`/serviço automático.

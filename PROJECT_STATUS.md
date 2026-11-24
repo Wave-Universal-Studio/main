@@ -2,6 +2,12 @@
 
 Atualizado em 24/11/2026.
 
+## Em revisão — F5-I2C2-OWNED-BUS-SCHEDULER, 24/11/2026
+
+Um coordenador MTA opt-in conecta os owners de captura previamente abertos, a ponte PCM com filas e o motor Personal/Stream aos owners de render previamente preparados. Cada passo aceita somente bloco consecutivo e tempo monotônico dentro da janela; falhas de captura, mix, relógio, render ou cancelamento encerram a sessão e invalidam tickets. Bus interno sem destino é consumido e descartado, não roteado implicitamente. O guard impede concorrência com outras operações isoladas, e ReleaseBuffer não confirmado preserva o bloqueio.
+
+Cinco testes novos simulam PCM de jogo/microfone, isolamento do Stream, falha de relógio, ausência de pacote, cancelamento e conflitos de destino. **Não há Start nativo, roteamento OBS/Discord, segunda saída física comprovada ou sincronização real entre dispositivos.** A PR requer CI Windows x64 verde antes da integração.
+
 ## Implementado — F5-I2C1-OWNED-WASAPI-PACKET-STEPS, 24/11/2026
 
 Os componentes `WasapiBusCaptureOwnerStep` e `WasapiBusRenderOwnerStep` trabalham sobre interfaces WASAPI de captura/render **já abertas** por um owner MTA autorizado. Cada passo obtém e libera seu buffer na mesma thread, verifica identidade, tamanho, QPC básico, flags e cancelamento, e liga os adapters PCM16/float32 da F5-I2B aos dois barramentos internos. ReleaseBuffer falho põe a ponte em falha fechada e retém o owner até recuperação explícita, sem liberar COM incerto.

@@ -1,5 +1,9 @@
 # Plano de testes
 
+## F5-I2C2-OWNED-BUS-SCHEDULER (em revisão)
+
+Cinco novos casos MTA injetados verificam fluxo captura→dois barramentos→render com microfone excluído do Stream, MTA/ReleaseBuffer, captura com timestamp futuro e ausência de render, fluxo consecutivo com drenagem de bus sem destino, cancelamento e idempotência de Stop, e rejeição de bindings repetidos. Testes não abrem endpoints nem usam áudio físico. CI Windows x64 deve confirmar **954 comuns existentes + 5 novos** em Debug/Release e 7 Explicit excluídos; restore locked com auditoria e builds sem avisos. Nenhuma alegação de execução contínua em hardware.
+
 ## F5-I2C1-OWNED-WASAPI-PACKET-STEPS (integrada)
 
 Oito testes novos em MTA verificam pacotes de captura/render com owners falsos: liberação sempre efetuada, rejeição de timestamp futuro/flags erradas, frames incompletos, invalidade de buffer, saída PCM16 com flag SILENT quando necessário, cancelamento antes da aquisição e recursos retidos se ReleaseBuffer falhar. Sem qualquer COM ou hardware real. A [CI Windows x64 final](https://github.com/Wave-Universal-Studio/main/actions/runs/45338821387) aprovou **954 testes comuns Debug e 954 Release**, sete Explicit excluídos por configuração, zero falhas e builds sem avisos/erros. Prova instrumental nativa e execução prolongada continuam pendentes.

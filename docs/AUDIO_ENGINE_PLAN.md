@@ -1,5 +1,11 @@
 # Motor de áudio — fundação, conversão e relógios
 
+## F5-I2C2-OWNED-BUS-SCHEDULER (em revisão)
+
+O scheduler de blocos de 10 ms recebe `now100ns` e índice sequencial do owner externo. Captura cada fonte presente, valida QPC no passo do owner, entrega PCM à fila, processa os dois barramentos e escreve apenas em outputs explicitamente vinculados. Ao faltar pacote ou falhar uma entrega, encerra a geração antes de realizar outro render. Sem saída vinculada, um bus é drenado para evitar backpressure e seu PCM é descartado. A proteção é deliberadamente mais estrita que uma recuperação de runtime contínuo; ressincronização e recuperação ficam para etapa posterior com provas próprias.
+
+Nenhuma cadência real WASAPI foi iniciada; os testes usam owners de buffers sintéticos no Windows. A infraestrutura é uma costura para backend opt-in posterior, não um driver nem serviço de áudio persistente.
+
 ## F5-I2C1-OWNED-WASAPI-PACKET-STEPS (integrada)
 
 A costura nativa por etapas usa owners MTA em volta de IAudioCaptureClient/IAudioRenderClient já adquiridos. O owner de captura obtém pacote, confirma direção/timestamp/posição, converte o span nativo para PCM do mixer e libera o buffer em `finally`, inclusive em erro de flags. O owner de render solicita buffer de 10 ms, prepara o pacote Personal/Stream e solta com flag SILENT se o ticket estiver inválido. Erros de ReleaseBuffer invalidam os tickets e retêm recursos porque não se conhece a conclusão física da entrega.
