@@ -75,7 +75,11 @@ internal sealed class WasapiBusCaptureOwnerStep : IDisposable
             // ReleaseBuffer é obrigatório após GetBuffer bem-sucedido, inclusive
             // quando o conteúdo é inválido ou não será publicado no barramento.
             releaseHresult = packets.ReleaseBuffer(packet.Frames);
-            if (releaseHresult != 0) retained = true;
+            if (releaseHresult != 0)
+            {
+                retained = true;
+                adapter.FailClosed();
+            }
         }
         if (releaseHresult != 0)
             throw new WasapiCallException("IAudioCaptureClient.ReleaseBuffer", releaseHresult);
@@ -157,7 +161,11 @@ internal sealed class WasapiBusRenderOwnerStep : IDisposable
             // Se a sessão foi invalidada, solta o pacote como silêncio, nunca
             // como conteúdo anterior da fila. O owner nativo não reusa buffer.
             releaseHr = packets.ReleaseBuffer(frames, valid && !cancellation.IsCancellationRequested ? 0u : 2u);
-            if (releaseHr != 0) retained = true;
+            if (releaseHr != 0)
+            {
+                retained = true;
+                adapter.FailClosed();
+            }
         }
         if (releaseHr != 0)
             throw new WasapiCallException("IAudioRenderClient.ReleaseBuffer", releaseHr);
