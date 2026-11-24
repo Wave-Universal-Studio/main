@@ -2,11 +2,11 @@
 
 Atualizado em 24/11/2026.
 
-## Em revisão — F5-I2C2-OWNED-BUS-SCHEDULER, 24/11/2026
+## Implementado — F5-I2C2-OWNED-BUS-SCHEDULER, 24/11/2026
 
 Um coordenador MTA opt-in conecta os owners de captura previamente abertos, a ponte PCM com filas e o motor Personal/Stream aos owners de render previamente preparados. Cada passo aceita somente bloco consecutivo e tempo monotônico dentro da janela; falhas de captura, mix, relógio, render ou cancelamento encerram a sessão e invalidam tickets. Bus interno sem destino é consumido e descartado, não roteado implicitamente. O guard impede concorrência com outras operações isoladas, e ReleaseBuffer não confirmado preserva o bloqueio.
 
-Cinco testes novos simulam PCM de jogo/microfone, isolamento do Stream, falha de relógio, ausência de pacote, cancelamento e conflitos de destino. **Não há Start nativo, roteamento OBS/Discord, segunda saída física comprovada ou sincronização real entre dispositivos.** A PR requer CI Windows x64 verde antes da integração.
+Cinco testes novos simulam PCM de jogo/microfone, isolamento do Stream, falha de relógio, ausência de pacote, cancelamento e conflitos de destino. [PR #14](https://github.com/Wave-Universal-Studio/main/pull/14) integrada no commit `3b2c0a55e1026942868c5b659a67b8dc9369109c`; [CI final Windows x64](https://github.com/Wave-Universal-Studio/main/actions/runs/45340451874) aprovou **959 testes comuns Debug e 959 Release**, zero falhas, sete Explicit excluídos por configuração, builds sem avisos. **Não há Start nativo, OBS/Discord real, segunda saída física comprovada ou sincronização entre dispositivos.**
 
 ## Implementado — F5-I2C1-OWNED-WASAPI-PACKET-STEPS, 24/11/2026
 

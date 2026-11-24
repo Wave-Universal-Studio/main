@@ -1,6 +1,6 @@
 # Motor de áudio — fundação, conversão e relógios
 
-## F5-I2C2-OWNED-BUS-SCHEDULER (em revisão)
+## F5-I2C2-OWNED-BUS-SCHEDULER (integrada)
 
 O scheduler de blocos de 10 ms recebe `now100ns` e índice sequencial do owner externo. Captura cada fonte presente, valida QPC no passo do owner, entrega PCM à fila, processa os dois barramentos e escreve apenas em outputs explicitamente vinculados. Ao faltar pacote ou falhar uma entrega, encerra a geração antes de realizar outro render. Sem saída vinculada, um bus é drenado para evitar backpressure e seu PCM é descartado. A proteção é deliberadamente mais estrita que uma recuperação de runtime contínuo; ressincronização e recuperação ficam para etapa posterior com provas próprias.
 

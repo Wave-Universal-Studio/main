@@ -4,11 +4,11 @@
 
 Criado em 18/11/2026 na transição do WaveStudio P1. O histórico integral de chats pode não estar acessível. Não presumir leitura completa. As decisões e evidências versionadas são a memória operacional do projeto. Esta fotografia inicial é histórica; sempre consultar o HEAD atual antes de trabalhar.
 
-## Estado de retomada mais recente — 24/11/2026 (F5-I2C1 integrada)
+## Estado de retomada mais recente — 24/11/2026 (F5-I2C2 integrada)
 
-**Base funcional F5-I2C1 `26cfb38b732b7b4fb9c6a9ddf2b5daebbe828906`**, com mais commits documentais/colaborativos depois. PR #9 integrou owners MTA para captura/render de pacotes WASAPI já abertos, verificação básica QPC/flags e retenção fail-closed em ReleaseBuffer não confirmado. Inclui F5-I1 BusMixSession, F5-I2A BoundedBusPcmTransport e F5-I2B codecs PCM16/float32. [CI Windows x64](https://github.com/Wave-Universal-Studio/main/actions/runs/45338821387): 954 testes aprovados Debug e 954 Release, 7 Explicit excluídos/configuração, builds limpos. NÃO há serviço WASAPI contínuo, stream OBS/Discord, mic virtual nem áudio por app isolado. README COMPLETO com logo e seção Sobre o aplicativo de três linhas foi preservado.
+**Main F5-I2C2 funcional `3b2c0a55e1026942868c5b659a67b8dc9369109c`** (docs podem avançar após). PR #14 scheduler `OwnedBusScheduler` coordena passos de owners WASAPI já abertos, PCM interno Personal/Stream, filas/tickets e saída explicitamente vinculada em MTA com relógio 10 ms injetado; sem uso contínuo real em hardware. [GitHub Actions Windows x64](https://github.com/Wave-Universal-Studio/main/actions/runs/45340451874) **959 testes comuns aprovados Debug, 959 Release, 0 falhas, 7 Explicit excluídos/configuração, builds limpos**. F5-I1 BusMixSession, F5-I2A ponte SPSC, F5-I2B codecs PCM, F5-I2C1 owners MTA e F5-I2C2 scheduler já integrados. O README público COMPLETO com logo e resumo de três linhas nunca deve ser substituído.
 
-**Próxima tarefa F5-I2C2-OWNED-BUS-SCHEDULER** (NEXT_TASK.md / Issue #2), coordenar owner/clock/generation sob opt-in, testes fakes, sem Start físico automático. Usuário autorizou autonomia de rotina e quer raríssima intervenção, mas não custos, driver, credencial, mudança Windows ou prova física repetida. Automação GitHub horária ativa, sem garantia de acionar Codex Cloud ilimitado. PR #4 de CI/cache e PR #8 de documentação/Dependabot integradas por colaborador; verificar PRs de manutenção em aberto antes de agir.
+**Próxima F5-I2C3-CLOCK-ADMISSION-AND-RECOVERY** (NEXT_TASK.md): adicionar admissão temporal real usando NativeClockSample/WasapiClockAdapter e recuperação/quarentena em dados injetados antes de abrir streams contínuos. Não presumir duas saídas físicas sincronizadas ou separação por app só por PID. Provas de F3 funcionais MANUAIS relatadas pelo usuário não são homologação instrumental e ele não deseja repetição/reboot/driver. Usuário autorizou progressão autônoma por PR/merges seguros com CI verde, sem novas cobranças, credenciais ou ações físicas. Automação horária acompanha o GitHub e pode agir via ferramentas disponíveis, mas NÃO inicia tarefas Codex Cloud ilimitadas.
 
 ## 1. Missão e papéis
 
@@ -208,6 +208,8 @@ Se o limite ocorrer sem aviso, o próximo chat deve reconstruir a passagem usand
 | 24/11/2026 | F5-I2B PR #5 squash 8929bc6, adapters PCM16/float32 WASAPI -> float32 mixer e inverso, 8 novos testes; CI Windows 946/946 Debug/Release, 7 Explicit fora, builds limpos. README completo preservado. | Próxima F5-I2C-OWNED-WASAPI-SESSION, lifecycle nativo opt-in/clock QPC/owners com provas injetadas sem alterar hardware. PR #4 CI/templates action_required, não mergeada. |
 
 | 24/11/2026 | F5-I2C1 PR #9 merge 26cfb38, owner MTA de buffers WASAPI adquiridos, release/fail-closed e CI Windows 954/954 Debug/Release, 7 Explicit fora; README intacto. | F5-I2C2 scheduler opt-in com clock e lifecycle testados com fakes, sem hardware automático. |
+
+| 24/11/2026 | F5-I2C2 PR #14 merge 3b2c0a5, scheduler MTA capture→PCM Personal/Stream→render explicitamente vinculado, CI Windows 959/959 Debug/Release e 7 Explicit excluídos, README completo intacto. | F5-I2C3 admissão temporal/recovery de relógios injetados, sem hardware automático e com CI. |
 
 ## 12. Prompt para abrir o próximo chat ChatGPT
 

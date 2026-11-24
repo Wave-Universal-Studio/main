@@ -40,11 +40,11 @@ Em **Dispositivos**, selecione a saída. Na **Mesa de som**, ajuste cada aplicat
 
 ## Estado do projeto
 
-**24/11/2026 — F5-I1 até F5-I2C1 integradas; controle nativo em desenvolvimento.**
+**24/11/2026 — F5-I1 até F5-I2C2 integradas; ligação física contínua ainda em desenvolvimento.**
 
 - **Base da `main`:** mesa de som, balanço Jogo/Comunicação e três idiomas implementados. A última regressão consolidada da F4-I2 registrou **914 testes aprovados em Debug e 914 em Release**, com sete testes físicos `Explicit` excluídos.
 - **[F5-I1 — integrada](https://github.com/Wave-Universal-Studio/main/commit/787df9181f62bc5b340300ee53d1b0ecabf83eca):** núcleo PCM de **Personal Mix** e **Stream Mix**, com matriz de envios, ganho/mute por barramento e isolamento; processamento testado com transporte injetado. **Não** equivale a áudio contínuo independente para OBS/Discord.
-- **Validação:** [GitHub Actions Windows x64 F5-I2C1](https://github.com/Wave-Universal-Studio/main/actions/runs/45338821387): **954 testes aprovados em Debug e 954 em Release**, zero falhas, sete Explicit excluídos por configuração e builds limpos. A implementação ainda não inicia streams nativos contínuos em hardware.
+- **Validação:** [GitHub Actions Windows x64 F5-I2C2](https://github.com/Wave-Universal-Studio/main/actions/runs/45340451874): **959 testes aprovados em Debug e 959 em Release**, zero falhas, sete Explicit excluídos por configuração e builds limpos. O scheduler permanece opt-in e ainda não inicia streams contínuos reais em hardware.
 - **Pendências:** estabilidade e recuperação prolongadas em hardware, latência/drift, aceitação instrumental de rotas externas e conexão dos barramentos com entradas/saídas contínuas.
 
 O proprietário relatou funcionamento manual dos dois fluxos externos estudados; isso não substitui medições instrumentadas. Para o histórico e as evidências, consulte [Status](PROJECT_STATUS.md), [Plano de testes](docs/TEST_PLAN.md) e [Próxima tarefa](NEXT_TASK.md).

@@ -1,8 +1,8 @@
 # Plano de testes
 
-## F5-I2C2-OWNED-BUS-SCHEDULER (em revisão)
+## F5-I2C2-OWNED-BUS-SCHEDULER (integrada)
 
-Cinco novos casos MTA injetados verificam fluxo captura→dois barramentos→render com microfone excluído do Stream, MTA/ReleaseBuffer, captura com timestamp futuro e ausência de render, fluxo consecutivo com drenagem de bus sem destino, cancelamento e idempotência de Stop, e rejeição de bindings repetidos. Testes não abrem endpoints nem usam áudio físico. CI Windows x64 deve confirmar **954 comuns existentes + 5 novos** em Debug/Release e 7 Explicit excluídos; restore locked com auditoria e builds sem avisos. Nenhuma alegação de execução contínua em hardware.
+Cinco novos casos MTA injetados verificam fluxo captura→dois barramentos→render com microfone excluído do Stream, MTA/ReleaseBuffer, captura com timestamp futuro e ausência de render, fluxo consecutivo com drenagem de bus sem destino, cancelamento e idempotência de Stop, e rejeição de bindings repetidos. Testes não abrem endpoints nem usam áudio físico. A [CI Windows x64 final](https://github.com/Wave-Universal-Studio/main/actions/runs/45340451874) aprovou **959 comuns Debug e 959 Release**, zero falhas, 7 Explicit excluídos por configuração, builds sem erros ou avisos. Nenhuma alegação de execução contínua em hardware.
 
 ## F5-I2C1-OWNED-WASAPI-PACKET-STEPS (integrada)
 

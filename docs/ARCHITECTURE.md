@@ -1,6 +1,6 @@
 # Arquitetura do Wave Studio
 
-## F5-I2C2-OWNED-BUS-SCHEDULER (em revisão)
+## F5-I2C2-OWNED-BUS-SCHEDULER (integrada)
 
 `OwnedBusScheduler` une `WasapiBusCaptureOwnerStep`, `BusMixSession`, `BoundedBusPcmTransport` e `WasapiBusRenderOwnerStep`, com `TransportActivityGuard`. Todos os owners são criados e usados previamente na mesma thread MTA; o scheduler não cria threads, não chama `IAudioClient.Start` e não usa dispositivos por conta própria. Um passo oferece pacotes de captura já adquiridos, soma PCM no mix interno e consome saídas Personal/Stream já preparadas. Destino sem binding é drenado e descartado, nunca enviado a uma saída alternativa.
 

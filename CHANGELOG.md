@@ -2,7 +2,7 @@
 
 ## Em desenvolvimento
 
-### 2026-11-24 — F5-I2C2-OWNED-BUS-SCHEDULER (em revisão)
+### 2026-11-24 — F5-I2C2-OWNED-BUS-SCHEDULER (integrada)
 
 - Scheduler opt-in de passos MTA: captura autorizada → mix PCM Personal/Stream → saída somente em owner já preparado.
 - Relógio de bloco monotônico, identidade, geração, Stop idempotente, exclusividade de operação e fail-closed.
