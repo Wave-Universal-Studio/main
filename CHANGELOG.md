@@ -2,6 +2,12 @@
 
 ## Em desenvolvimento
 
+### 2026-11-24 — F5-I2B-NATIVE-PCM-PACKET-ADAPTER (em revisão)
+
+- Adaptação de pacotes PCM16/float32 WASAPI para blocos float32 do mixer e codificação inversa com saturação segura.
+- Validação de flags, formato, endpoint/geração, bytes e frames; silêncio explícito e tickets de saída revalidados.
+- Oito testes novos com dados sintéticos, sem abrir dispositivos ou iniciar captura; runtime WASAPI contínuo ainda pendente.
+
 ### 2026-11-24 — F5-I2A-BOUNDED-PCM-BRIDGE (integrada)
 
 - Adicionada ponte de transporte PCM com filas SPSC limitadas por captura, Personal Mix, Stream Mix e destino externo autorizado, sem abrir áudio nativo.

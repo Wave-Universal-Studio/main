@@ -2,6 +2,12 @@
 
 Atualizado em 24/11/2026.
 
+## Em revisão — F5-I2B-NATIVE-PCM-PACKET-ADAPTER, 24/11/2026
+
+Adapters de captura/render transformam pacotes WASAPI PCM16/float32 já adquiridos em blocos float32 do `BoundedBusPcmTransport` e de volta em bytes de saída. Validam formatos, canais e 44,1/48 kHz, frames completos, endpoint/generation, SILENT e flags de falha; não usam COM, driver nem criam dispositivos. A saída verifica o ticket de geração antes de disponibilizar bytes. O owner nativo futuro permanece responsável por clock, liberação de buffers e entrega real.
+
+Oito casos novos simulam pacotes reais e verificam conversão, clipping, privacidade, silêncio e invalidade; GitHub Actions Windows x64 ainda vai validar a PR. **Ainda não há serviço contínuo WASAPI, áudio OBS/Discord ou captura separada por aplicativo.**
+
 ## Implementado — F5-I2A-BOUNDED-PCM-BRIDGE, 24/11/2026
 
 Nova ponte `BoundedBusPcmTransport` liga o núcleo PCM de F5-I1 a produtores de blocos de captura e consumidores independentes de Personal/Stream. As filas SPSC são limitadas por fonte e barramento, identificam geração, formato e bloco de 10 ms, recusam dados antigos/incompletos e só retornam saídas com ticket ainda válido. A saída externa permanece opt-in e não abre nenhum dispositivo. Se o consumidor não acompanhar, a entrega falha fechada, sem substituir áudio ainda não consumido.

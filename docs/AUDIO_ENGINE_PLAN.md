@@ -1,5 +1,11 @@
 # Motor de áudio — fundação, conversão e relógios
 
+## F5-I2B-NATIVE-PCM-PACKET-ADAPTER (em revisão)
+
+Captura: o owner WASAPI futuro obtém `WasapiCaptureBuffer`, valida QPC, identidade e flags e transforma um pacote de 10 ms em bytes; o adaptador `WasapiCaptureBlockAdapter` valida o formato nativo conhecido e decodifica para float32 normalizado, sem alocar a cada pacote. Entrada SILENT sem conteúdo vira zeros. Entrada com dados truncados, timestamp invalido ou descontinuidade não entra no barramento.
+
+Saída: `WasapiRenderBlockAdapter` lê PCM do barramento autorizado por índice e ticket, codifica em PCM16 LE ou float32 LE, sanitiza valores não finitos e esvazia o destino se a sessão estiver cancelada/encerrada. Não presume conversão de taxa/canais no render: o formato nativo deve igualar o do barramento ou o chamador fornece um adaptador de formato separado. Não abre streams, não valida latência/drift físico e não transporta dados ao dispositivo por si só.
+
 ## F5-I2A-BOUNDED-PCM-BRIDGE (integrada)
 
 O transporte em filas `BoundedBusPcmTransport` separa a chegada dos blocos de captura do processamento de `BusMixSession` e do consumo de Personal/Stream. Cada lane é SPSC, limitada, pré-alocada, possui identidade estável (ID, direção e geração) e índices de bloco. Escritas duplicadas, fora de ordem, atrasadas ou quando não há espaço são rejeitadas. O consumidor descarta índices anteriores, mantém um índice futuro para a chamada correta e entrega silêncio na ausência do bloco esperado. Sem fila infinita, alocação por bloco ou reordenação implícita de relógios. Capacidade default de 8 blocos; requisito nativo futuro deve considerar atraso e variação observados.

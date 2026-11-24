@@ -1,5 +1,13 @@
 # Arquitetura do Wave Studio
 
+## F5-I2B-NATIVE-PCM-PACKET-ADAPTER (em revisão)
+
+`WasapiCaptureBlockAdapter` recebe buffers já verificados pelo owner externo e os converte com `PcmFloatConverter` para blocos de 10 ms, aceitando somente PCM16/float32 LE e formatos `WasapiPcm.Validate` (44,1/48 kHz, mono/estéreo). Frames incompletos, endpoints/gerações incorretos, descontinuidade, timestamp ruim ou flags desconhecidas são recusados. SILENT aceita ponteiro nulo/ausência de bytes e gera zeros. Não abre `IAudioClient`, não lê QPC nem libera pacotes de COM; tais garantias pertencem ao owner de captura.
+
+`WasapiRenderBlockAdapter` consome Personal Mix, Stream Mix ou Stream externo apenas por ticket válido do `BoundedBusPcmTransport` e codifica diretamente em `Span<byte>` sem alocação gerenciada por bloco após preparação. As amostras são sanitizadas, limitadas a ±1 e, em PCM16, quantizadas com saturação. Quando não há bloco válido, o destino é limpo e a entrega falha. Quem futuramente copiar para o endpoint físico deve revalidar o ticket imediatamente antes de liberar o render; o adaptador não substitui essa verificação nem inicia monitoramento.
+
+A ponte continua interna: não há clock/scheduler nativo, saída simultânea a dispositivo e OBS nem isolação PCM por sessão Windows. Nenhum driver, dispositivo padrão ou preferência do proprietário é alterado.
+
 ## F5-I2A-BOUNDED-PCM-BRIDGE (integrada)
 
 `BoundedBusPcmTransport` implementa `IBusPcmTransport` em produção, mantendo filas SPSC pré-alocadas para cada origem de captura e para as saídas Personal Mix, Stream Mix e, opcionalmente, Stream externo. As fontes são registradas por `TransportEndpoint` (ID/direção/geração), com `PcmFloatFormat` de 44,1/48 kHz, mono ou estéreo; um bloco contém exatamente 10 ms. O produtor oferece PCM com índice de bloco monotonamente crescente; o consumidor do mixer exige o bloco exato e descarta os anteriores. Blocos futuros são conservados. Capacidade é fixa de 2 a 64 blocos, potência de dois; sobrecarga rejeita novo dado sem sobrescrever o que o outro lado ainda não leu.
