@@ -17,6 +17,9 @@ internal sealed class WasapiCaptureBlockAdapter : IDisposable
     private readonly int bytesPerBlock;
     private int closed, processing;
 
+    internal int BytesPerBlock => bytesPerBlock;
+    internal void FailClosed() { Interlocked.Exchange(ref closed, 1); bridge.Dispose(); }
+
     public WasapiCaptureBlockAdapter(BoundedBusPcmTransport bridge, TransportEndpoint endpoint,
         PcmFloatFormat sourceFormat, WasapiPcm nativeFormat)
     {
@@ -82,6 +85,8 @@ internal sealed class WasapiRenderBlockAdapter : IDisposable
     private readonly float[] scratch;
     private readonly int bytesPerBlock;
     private int closed, processing;
+
+    internal void FailClosed() { Interlocked.Exchange(ref closed, 1); bridge.Dispose(); }
 
     public WasapiRenderBlockAdapter(BoundedBusPcmTransport bridge,
         PcmFloatFormat mixFormat, WasapiPcm nativeFormat)
