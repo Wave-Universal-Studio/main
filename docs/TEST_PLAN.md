@@ -1,5 +1,7 @@
 # Plano de testes
 
+A [validação integrada local de 24/11](PHYSICAL_VALIDATION.md) reúne a regressão Release no Windows real, o ensaio de leitura dos medidores, a pré-verificação do VB-CABLE e a matriz de testes físicos pendentes por fase.
+
 ## F5-I2C2-OWNED-BUS-SCHEDULER (integrada)
 
 Cinco novos casos MTA injetados verificam fluxo captura→dois barramentos→render com microfone excluído do Stream, MTA/ReleaseBuffer, captura com timestamp futuro e ausência de render, fluxo consecutivo com drenagem de bus sem destino, cancelamento e idempotência de Stop, e rejeição de bindings repetidos. Testes não abrem endpoints nem usam áudio físico. A [CI Windows x64 final](https://github.com/Wave-Universal-Studio/main/actions/runs/45340451874) aprovou **959 comuns Debug e 959 Release**, zero falhas, 7 Explicit excluídos por configuração, builds sem erros ou avisos. Nenhuma alegação de execução contínua em hardware.

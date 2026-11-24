@@ -1,5 +1,7 @@
 # F3-I1-EXTERNAL-ROUTE — rota externa limitada
 
+**Atualização de 24/11/2026.** O log Kernel-Boot confirmou inicialização completa após a instalação. Os dois trajetos passaram na consulta somente leitura do cabo simples e o Código 10 segue em outra instância, sem pino ativo. A execução instrumentada permanece separada da aprovação manual anterior. [Pré-verificação atual e pendências](PHYSICAL_VALIDATION.md).
+
 Em 19/11/2026, o proprietário autorizou expressamente o início da Fase 3 pelo plano de `31acd2f`, com as pendências da Fase 2 acompanhadas em validação integrada. A entrega prepara uma execução física futura, sujeita a revisão e autorização de configuração e áudio. A aceitação da Fase 2 e a prova externa completa seguem em aberto.
 
 ## Caminho preparado

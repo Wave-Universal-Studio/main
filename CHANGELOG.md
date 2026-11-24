@@ -2,6 +2,10 @@
 
 ## Em desenvolvimento
 
+### 2026-11-24 — validação integrada local
+
+- Registrados os resultados Release no Windows 10 x64, a estabilidade dos medidores em leitura e a prontidão atual do VB-CABLE simples após boot completo. A matriz registra separadamente as evidências anteriores e o que falta para aceitação física.
+
 ### 2026-11-24 — F5-I2C2-OWNED-BUS-SCHEDULER (integrada)
 
 - Scheduler opt-in de passos MTA: captura autorizada → mix PCM Personal/Stream → saída somente em owner já preparado.

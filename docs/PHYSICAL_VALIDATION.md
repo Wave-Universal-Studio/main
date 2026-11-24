@@ -1,0 +1,48 @@
+# Validação física integrada do Wave Studio
+
+Rodada de 24/11/2026 no Windows 10 Pro x64, build 19045, sobre a `main` sincronizada por fast-forward até `4bab6f2f6e4c8b60f73c8f33317c23ab90531809`. SDK .NET 10.0.404 e runtime 10.0.15 x64. O inventário usa a versão Release deste commit. As evidências do proprietário e as provas antigas continuam válidas em seus respectivos escopos.
+
+## Evidências desta rodada
+
+| Verificação | Resultado e alcance |
+| --- | --- |
+| Regressão local x64 | Restore locked com auditoria de todos os pacotes e NU1900 como erro. Build Release não incremental com zero avisos e zero erros. 959 testes aprovados, zero falhas, sete Explicit excluídos, 56,941 s, seed 20261113. A CI da mesma base funcional registra 959 em Debug e 959 em Release. |
+| Windows e Core Audio | Seis endpoints ativos de reprodução e três de captura. Catálogo sem avisos, com o FIFINE e o headset USB selecionados por nome exato e direção. |
+| Estabilidade de leitura | 120,033 s observados, 1.200 snapshots (1.199 com ambos os medidores válidos), zero atrasados ao observar e zero falhas do worker. Intervalo p95 entre atualizações de 100,76 ms, máximo de 101,70 ms. Consulta p95 de 0,196 ms, máximo de 1,337 ms. Descarte em 2,08 ms, sem erro. CPU do processo coletor de 437,5 ms, working set de 28,4 MiB no início, pico amostrado de 32,3 MiB e 31,4 MiB ao fim. Os dois endpoints continuaram ativos. O ensaio mede leitura e descarte do serviço de medidores em repouso, sem transporte contínuo. |
+| Períodos de dispositivo | Consulta WASAPI sem Initialize ou Start confirmou float32 a 48 kHz nos quatro endpoints do cabo simples. Headset e cabo estéreo, FIFINE mono. Período padrão de 10 ms em todos. Mínimo exclusivo informado de 3 ms no headset, FIFINE e captura do cabo, e 2 ms na reprodução do cabo. Buffer inicializado e latência do stream ficam indisponíveis nessa consulta. |
+| Driver e boot | Driver assinado VB-Audio 3.5.2.0. Evento Kernel-Boot 27 de 24/11 às 00:19:37, UTC−03, com `BootType=0`, consistente com o horário de boot do Windows e posterior à instalação de 19/11. O evento mais recente, às 08:25:49, teve `BootType=1`. A instância ativa e saudável tem dois pinos de reprodução e um de captura. A outra instância permanece em Código 10, sem pino ativo associado. |
+| Prontidão dos dois fluxos externos | Cabo simples disponível. Pareamento e saúde dos quatro alvos confirmados. Os seis padrões do Windows estão fora do cabo. Navegador → cabo → headset e microfone → cabo → OBS passaram na consulta de compatibilidade. A+B ausente. OBS portátil 33.0.1 existente com assinatura Authenticode válida de OBS Project, LLC. O SHA-256 do WAV local de 1 kHz coincide com o histórico do preparo. |
+| Relógios, reconexão e áudio das rotas | A descoberta por filtro exato encontrou um método Explicit para a coleta de clock em razão nominal e um para a prova sequencial do cabo simples. A execução e a reconexão assistida aguardam confirmação do operador. Nesta rodada houve somente consulta de capacidades e leituras de metadados/medidores. |
+
+O tempo de atualização do medidor e o período de dispositivo são grandezas diferentes de latência acústica. Na preparação histórica parada do FIFINE e headset, o Windows retornou buffer de 1.056 frames por lado e `GetStreamLatency=0` com ambos os streams parados. O retorno não mede o atraso ponta a ponta. A prova acústica precisa de um estímulo conhecido e de referência de tempo comum, com captura da resposta e distribuição de atrasos. [Contrato de latência do WASAPI](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient-getstreamlatency).
+
+## Pendências por fase
+
+| Fase | Evidência disponível | Pendência física ou de aceitação |
+| --- | --- | --- |
+| F0 e distribuição Alpha | Build e testes locais no Windows 10. Pacote e abertura/fechamento de versões anteriores documentados. | Validação do pacote portátil atualizado em Windows 11 x64, inclusive abertura, encerramento, ícone na barra de tarefas/Alt+Tab e ausência de dependências externas inesperadas. Windows 10 permanece plataforma experimental. |
+| F1 · dispositivos, medição e recuperação | A01, A02, A03, A05, A09, A11 e A12 aprovados por relato pós-formatação. A leitura atual é evidência adicional. | Subcasos instrumentados de troca e reconexão USB com seleção explícita, modo Seguir padrão, suspensão/retomada e encerramento sob atividade. Matriz de dispositivos compatíveis, incluindo USB ensaiado, analógico, Bluetooth e HDMI/DP quando disponíveis. Conferir situações de captura bloqueada e controles de balanço ausentes quando houver ambiente pertinente. |
+| F1 · mixer, preferências e interface | Regressão de sessões, persistência, recuperação de arquivos isolados, foco e layout. A14 perfis de EQ aprovado por relato geral. | A04, isolamento de volume/mute com duas sessões reais. A06, salvar e restaurar níveis com confirmação e conferir após reabrir. A07, aceite assistido com arquivo descartável, inclusive recuperação e proteção de esquema futuro. A08, teclado, rolagem e DPI 100/150/200%. A10, Windows 11 x64. A13 tem diferença audível relatada. Ausência de distorção, limites, bypass e descarte merecem confirmação de subcasos ainda sem evidência. |
+| F2 · transporte, sincronização e escuta | Prova 4 confirmou 5 s silenciosos, movimento, continuidade e liberação. A prova nominal SILENT terminou em 4,999 s no par escolhido com continuidade nominal, zero drops/underruns e liberação confirmada. A escuta da própria voz foi confirmada pelo proprietário, sem JSON nem código de saída recuperados. A coleta histórica de drift encerrou aos 3,722 s por `WindowRateOutsideTolerance`, com 20 cortes e zero janelas estimáveis. | Medir relógios independentes em janela longa o suficiente, verificar a necessidade de compensação e confirmar integridade da fila, Stop/Release, latência acústica e recuperação real do transporte após perda do dispositivo. Monitoramento contínuo de produção e correção física de drift aguardam a implementação/validação de seus caminhos próprios. O runner de escuta atual opera por até 5 s. |
+| F3 · roteamento externo | O proprietário confirmou manualmente os dois fluxos. A consulta desta rodada confirmou a prontidão do cabo único, formatos e padrões. | Prova instrumentada do navegador com amplitude antes/depois, quietude na passagem para o microfone, medidor da fonte exata no OBS, ausência de loop/duplicação, contadores por fluxo e restauração das duas seleções. A+B, simultaneidade e recepção no Discord continuam sem evidência física. A+B requer dois adaptadores disponíveis e confirmação específica. |
+| F4 · mesa, Game/Chat e idiomas | Faders, master e balanço de sessão, conflitos, restauração e internacionalização cobertos pela regressão. | Exercitar dois aplicativos reais no mesmo endpoint, atribuir Jogo/Comunicação, confirmar atenuação e centro contra níveis do Windows, conflito por ajuste externo, troca de grupo, reconexão e fechamento. Conferir as três línguas e o layout no desktop real se houver discrepância com o teste STA. Solo foi adiado. |
+| F5 · barramentos internos | Matriz Personal/Stream, ponte PCM, passos e agendador MTA com fontes e saídas injetadas até F5-I2C2. | A admissão dos relógios reais e a recuperação dos owners são a próxima entrega de código. O caminho físico contínuo, a segunda saída, a sincronização entre dispositivos e a integração desses barramentos com OBS/Discord ainda não estão disponíveis para aceitação. |
+
+Os critérios completos e o histórico estão nos roteiros da [Alpha](ALPHA_ACCEPTANCE.md), do [backend WASAPI](WASAPI_BACKEND_PLAN.md), do [roteamento externo](EXTERNAL_ROUTE_PROOF.md) e no [plano de testes](TEST_PLAN.md).
+
+## Reprodutibilidade e privacidade
+
+| Evidência numérica local | SHA-256 |
+| --- | --- |
+| `native-preflight.json` | `604a00849b7957fbb31306b83bfdf590e9b7001e5ac714405136f6610f4d4e19` |
+| `readonly-soak.json` | `af4ac8a6c130647b67f46a3f5d72129619f139e134b6f08ab13a1c33ea61bb0e` |
+
+```powershell
+dotnet restore WaveStudio.slnx --locked-mode -p:NuGetAudit=true -p:NuGetAuditMode=all -p:WarningsAsErrors=NU1900
+dotnet build WaveStudio.slnx -c Release --no-restore --no-incremental -warnaserror --nologo
+dotnet test --solution WaveStudio.slnx -c Release --no-build -- --explicit off --seed 20261113 --timeout 165s --long-running 10 --diagnostic --diagnostic-output-directory artifacts/physical-validation-20261124/diagnostics-Release
+```
+
+A consulta usa `CoreAudioDeviceService`, `ExternalRouteReadinessService` e `WasapiEndpointProbe` da mesma DLL Release. A observação de estabilidade usa `AudioWatchWorker` em leitura dos medidores Core Audio, com amostragem do estado publicado, conferência da seleção ao final e descarte cooperativo. Os logs, os resumos numéricos e o código do coletor local ficam sob `artifacts/physical-validation-20261124`, ignorado pelo Git. Esta documentação publica somente os resultados agregados, sem IDs dos dispositivos, caminhos de perfis, amostras PCM ou voz.
+
+A medição tem escopo de evidência local em Windows 10. Para iniciar áudio ativo ou editar rotas dos aplicativos, é necessária confirmação das condições naquele momento. A restauração preserva valores externos observáveis e confirma as seleções originais antes de considerar encerrado o lote.
