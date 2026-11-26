@@ -69,14 +69,16 @@ As duas fases DSP preservam o limite de até 5 s cada em razão nominal, períod
 
 ### Runner e snapshot privado
 
-Crie antes das alterações um arquivo JSON local ignorado pelo Git. `Before` contém o ID original exato ou `DEFAULT`; `Temporary` contém o render do cabo para navegador e a captura do cabo para OBS. Use a instância e o perfil/cena/fonte observados. Guarde os dois valores e a disponibilidade independentemente do apphost. Para o horário da instância, obtenha `(Get-Process -Id <PID>).StartTime.ToUniversalTime().Ticks`.
+Crie antes das alterações um arquivo JSON local ignorado pelo Git. `Before` contém o ID original exato, `DEFAULT` para seguir o padrão ou `DISABLED` para a fonte original desativada do OBS. `Temporary` contém o render do cabo para navegador e a captura do cabo para OBS. Use a instância e o perfil/cena/fonte observados. Guarde os dois valores e a disponibilidade independentemente do apphost. Para o horário da instância, obtenha `(Get-Process -Id <PID>).StartTime.ToUniversalTime().Ticks`.
 
 ```json
 {
   "Browser": { "Pid": 0, "StartUtcTicks": 0, "Context": "<perfil>", "Before": "DEFAULT", "Temporary": "<render>" },
-  "Obs": { "Pid": 0, "StartUtcTicks": 0, "Context": "<cena/fonte>", "Before": "DEFAULT", "Temporary": "<captura>" }
+  "Obs": { "Pid": 0, "StartUtcTicks": 0, "Context": "<cena/fonte>", "Before": "DISABLED", "Temporary": "<captura>" }
 }
 ```
+
+Em uma cópia portátil com cena vazia e áudio global desativado, use a mesma seleção Mic/Auxiliar para a aplicação e a restauração. Mantenha-a em Desativado durante o navegador e a quietude. Depois da instrução do runner, escolha CABLE Output e confirme o sinal dessa única faixa no OBS, com monitoração desligada. Ao restaurar, volte a Desativado e confirme o estado original no console.
 
 As chaves do ambiente exclusivo do apphost têm prefixo `WAVESTUDIO_SINGLE_CABLE_`. `AUTHORIZED`, `ISOLATION_CONFIRMED`, `HEADSET_LOW_CONFIRMED` e `DRIVER_CHECKED` recebem `1` somente após as confirmações. As demais são `RENDER`, `CAPTURE`, `HEADSET`, `MIC` e `SNAPSHOT_PATH`. Use o console visível de primeiro plano com entrada interativa. A chave Enter pertence ao proprietário e não é automatizada.
 

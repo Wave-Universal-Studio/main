@@ -1,7 +1,11 @@
 namespace WaveStudio.Audio.Engine;
 
-// Observação local da configuração do aplicativo. Endpoint nulo representa a opção explícita de seguir o padrão.
-internal readonly record struct ExternalSelection(string ClientId, string? EndpointId, bool Accessible, bool EndpointPresent);
+// Com endpoint nulo, distingue seguir o padrão de uma fonte desativada.
+internal readonly record struct ExternalSelection(string ClientId, string? EndpointId, bool Accessible, bool EndpointPresent,
+    bool Disabled = false)
+{
+    public ExternalSelection SelectEndpoint(string endpointId) => this with { EndpointId = endpointId, Disabled = false };
+}
 internal readonly record struct ExternalSelections(ExternalSelection Browser, ExternalSelection Consumer);
 internal enum ExternalRestoreState { AlreadyRestored, Restore, Conflict, Unavailable }
 internal readonly record struct ExternalRestoreReport(ExternalRestoreState Browser, ExternalRestoreState Consumer)
@@ -19,13 +23,13 @@ internal sealed class ExternalRouteConfiguration
     public ExternalRouteConfiguration(ExternalRouteTopology topology, ExternalSelections before)
     {
         topology.Validate();
-        if (!CanRead(before.Browser) || !CanRead(before.Consumer) ||
+        if (!CanRead(before.Browser) || before.Browser.Disabled || !CanRead(before.Consumer) ||
             StringComparer.OrdinalIgnoreCase.Equals(before.Browser.ClientId, before.Consumer.ClientId))
             throw new ArgumentException("Observe as duas configurações iniciais e suas identidades antes de aplicar.");
         this.topology = topology;
         Before = before;
-        Applied = new(before.Browser with { EndpointId = topology.BrowserCable.Render.Endpoint.Id },
-            before.Consumer with { EndpointId = topology.MicCable.Capture.Endpoint.Id });
+        Applied = new(before.Browser.SelectEndpoint(topology.BrowserCable.Render.Endpoint.Id),
+            before.Consumer.SelectEndpoint(topology.MicCable.Capture.Endpoint.Id));
     }
 
     // Antes de cada troca manual, compara novamente o observado com o valor temporário ou original.
@@ -51,10 +55,10 @@ internal sealed class ExternalRouteConfiguration
 
     internal static bool CanRead(ExternalSelection value) =>
         value.Accessible && value.EndpointPresent && !string.IsNullOrWhiteSpace(value.ClientId) &&
-        (value.EndpointId is null || !string.IsNullOrWhiteSpace(value.EndpointId));
+        (value.EndpointId is null || (!value.Disabled && !string.IsNullOrWhiteSpace(value.EndpointId)));
 
     internal static bool Matches(ExternalSelection expected, ExternalSelection current) =>
-        CanRead(current) && StringComparer.Ordinal.Equals(expected.ClientId, current.ClientId) &&
+        CanRead(current) && expected.Disabled == current.Disabled && StringComparer.Ordinal.Equals(expected.ClientId, current.ClientId) &&
         StringComparer.OrdinalIgnoreCase.Equals(expected.EndpointId, current.EndpointId);
 }
 

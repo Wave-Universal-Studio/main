@@ -121,6 +121,45 @@ public sealed class SingleCableAcceptanceTests
     }
 
     [Fact]
+    public async Task DisabledObsSourceStaysOffUntilMicrophoneAndMustBeRestoredAsDisabled()
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var original = Original();
+        original = original with { Consumer = new("obs/scene/source", null, true, true, Disabled: true) };
+        await using var batch = new SingleCableAcceptance(Graph(), original, stop.Token, new());
+
+        Assert.True(batch.BrowserSelections.Consumer.Disabled);
+        Assert.False(batch.MicrophoneSelections.Consumer.Disabled);
+        Assert.Equal(batch.MicrophoneTopology.Cable.Capture.Endpoint.Id, batch.MicrophoneSelections.Consumer.EndpointId);
+        Assert.True((await RunFlow(batch, ExternalFlow.Browser, stop.Token)).Passed);
+
+        var defaultInput = original with { Consumer = original.Consumer with { Disabled = false } };
+        Assert.Equal(ExternalRestoreState.Conflict, batch.Restoration(defaultInput).Consumer);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            batch.CheckQuietAsync(batch.QuietTopology, defaultInput, true, () => true));
+        Assert.True((await ObserveQuiet(batch, "quiet", original: original)).Passed);
+        Assert.True((await RunFlow(batch, ExternalFlow.Microphone, stop.Token)).Passed);
+        Assert.Equal(ExternalRestoreState.Restore, batch.Restoration(batch.MicrophoneSelections).Consumer);
+        Assert.False(batch.FinishRestoration(defaultInput).Complete);
+        Assert.True(batch.FinishRestoration(original).Complete);
+        Assert.Equal(SingleCableState.Complete, batch.State);
+    }
+
+    [Theory]
+    [InlineData("DEFAULT", null, false)]
+    [InlineData("DISABLED", null, true)]
+    [InlineData("endpoint-original", "endpoint-original", false)]
+    public void SnapshotDistinguishesObsSourceStates(string snapshotValue, string? endpointId, bool disabled)
+    {
+        var parsed = NativeSingleCableProofTests.ParseOriginalSelection("obs/scene/source", snapshotValue, allowDisabled: true);
+        Assert.Equal(endpointId, parsed.EndpointId);
+        Assert.Equal(disabled, parsed.Disabled);
+        if (disabled)
+            Assert.Throws<InvalidOperationException>(() =>
+                NativeSingleCableProofTests.ParseOriginalSelection("browser/profile", snapshotValue, allowDisabled: false));
+    }
+
+    [Fact]
     public async Task ProducerReturningAfterQuietNeverOpensMicrophone()
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
@@ -249,7 +288,8 @@ public sealed class SingleCableAcceptanceTests
         return result;
     }
 
-    private static Task<CableQuietReport> ObserveQuiet(SingleCableAcceptance batch, string fault, CancellationTokenSource? cancel = null)
+    private static Task<CableQuietReport> ObserveQuiet(SingleCableAcceptance batch, string fault, CancellationTokenSource? cancel = null,
+        ExternalSelections? original = null)
     {
         const long origin = 3_000_000_000;
         long now = origin, next = origin + 100_000, position = 0;
@@ -269,7 +309,7 @@ public sealed class SingleCableAcceptanceTests
         if (fault == "disconnect") calls.Input.FailStep = "Next";
         if (fault == "release") calls.Input.ReleaseResult = WasapiSilentTests.Invalidated;
         if (fault == "stop") calls.Input.StopResult = WasapiSilentTests.Invalidated;
-        return batch.CheckQuietAsync(batch.QuietTopology, Original(), true,
+        return batch.CheckQuietAsync(batch.QuietTopology, original ?? Original(), true,
             () => fault != "producer" || now - origin < 5_000_000, calls.Open, () => now, _ =>
             {
                 now += 50_000;

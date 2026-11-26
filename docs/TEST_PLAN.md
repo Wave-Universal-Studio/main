@@ -2,6 +2,10 @@
 
 A [validação integrada local de 24/11](PHYSICAL_VALIDATION.md) reúne a regressão Release no Windows real, o ensaio de leitura dos medidores, a pré-verificação do VB-CABLE e a matriz de testes físicos pendentes por fase.
 
+## Prova de cabo simples — fonte do OBS desativada
+
+Os testes dirigidos distinguem os três valores do snapshot, recusam `DISABLED` no navegador e exercitam o lote com o OBS desligado durante navegador e quietude. A seleção temporária habilita apenas a entrada do cabo. Voltar a Padrão é tratado como conflito quando o original foi Desativado.
+
 ## F5-I2C4 — clocks de clientes preparados
 
 Os testes dirigidos verificam a ordem de leitura dos clocks antes do QPC, o primeiro corte sem PCM, HRESULT negativo e incerto, falha de leitura, formato PCM, geração, recusa de tempo e pacotes injetados no caminho nativo, rollback de aquisição, liberação independente de owners e quarentena do guard. Os substitutos exercitam as interfaces e a MTA. O hardware não é inicializado nesta suíte.
