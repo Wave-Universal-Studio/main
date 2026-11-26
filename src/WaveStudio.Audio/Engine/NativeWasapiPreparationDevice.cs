@@ -51,7 +51,7 @@ internal sealed class NativeWasapiPreparationDevice(TransportEndpoint requested)
         ValidateIdentity(requested);
         var iid = typeof(IPreparationAudioClient).GUID;
         int hr = device!.Value.Activate(in iid, 1, 0, out nint pointer);
-        return new Client(NativeReference<IPreparationAudioClient>.Adopt(hr, pointer, "IMMDevice.Activate"));
+        return new Client(NativeReference<IPreparationAudioClient>.Adopt(hr, pointer, "IMMDevice.Activate"), requested);
     }
     private void CheckOwner()
     {
@@ -67,17 +67,54 @@ internal sealed class NativeWasapiPreparationDevice(TransportEndpoint requested)
         disposed = true;
     }
 
-    private sealed class Client(NativeReference<IPreparationAudioClient> client) : IWasapiStreamClient
+    private sealed class Client(NativeReference<IPreparationAudioClient> client, TransportEndpoint endpoint) : IWasapiNativeBoundStreamClient
     {
+        public TransportEndpoint Endpoint => endpoint;
+        private WasapiPcm? negotiated;
         private nint format;
-        private bool initialized;
+        public WasapiPcm PreparedFormat
+        {
+            get
+            {
+                _ = client.Value;
+                return initialized && negotiated is { } ready ? ready :
+                    throw new InvalidOperationException("Cliente WASAPI sem formato preparado.");
+            }
+        }
+        private bool initialized, busServicesBorrowed;
+
+        public IDisposable BorrowBusServices()
+        {
+            _ = PreparedFormat;
+            if (busServicesBorrowed) throw new InvalidOperationException("Cliente WASAPI já vinculado a um barramento.");
+            var lease = new BusServicesLease(this);
+            busServicesBorrowed = true;
+            return lease;
+        }
+
+        private sealed class BusServicesLease(Client owner) : IDisposable
+        {
+            private bool active = true;
+            public void Dispose()
+            {
+                if (!active) return;
+                owner.ReleaseBusServices();
+                active = false;
+            }
+        }
+
+        private void ReleaseBusServices()
+        {
+            _ = client.Value;
+            busServicesBorrowed = false;
+        }
         public WasapiPcm ReadMixFormat()
         {
             _ = client.Value; // Verifica a propriedade e o descarte antes de acessar a memória.
             if (format != 0) throw new InvalidOperationException("Formato já consultado.");
             WasapiCallException.RequireSuccess(client.Value.GetMixFormat(out format), "IAudioClient.GetMixFormat");
             if (format == 0) throw new InvalidOperationException("Formato nativo ausente.");
-            return WasapiPcm.From(WaveFormat.MarshalFromPtr(format));
+            return negotiated = WasapiPcm.From(WaveFormat.MarshalFromPtr(format));
         }
         public void RequireExactSupport()
         {
@@ -149,6 +186,7 @@ internal sealed class NativeWasapiPreparationDevice(TransportEndpoint requested)
         }
         public void Dispose()
         {
+            if (busServicesBorrowed) throw new InvalidOperationException("Libere os serviços do barramento antes do cliente WASAPI.");
             if (format != 0) { _ = client.Value; Marshal.FreeCoTaskMem(format); format = 0; }
             client.Dispose();
         }
@@ -163,7 +201,7 @@ internal sealed class NativeWasapiPreparationDevice(TransportEndpoint requested)
         }
         public void Dispose() => clock.Dispose();
     }
-    private sealed class CapturePackets(NativeReference<INativeCaptureClient> packets) : IWasapiCapturePackets
+    private sealed class CapturePackets(NativeReference<INativeCaptureClient> packets) : IWasapiCapturePackets, IWasapiNativePacketService
     {
         public uint NextPacketSize()
         {
@@ -178,7 +216,7 @@ internal sealed class NativeWasapiPreparationDevice(TransportEndpoint requested)
         public int ReleaseBuffer(uint framesRead) => packets.Value.ReleaseBuffer(framesRead);
         public void Dispose() => packets.Dispose();
     }
-    private sealed class RenderPackets(NativeReference<INativeRenderClient> packets) : IWasapiRenderPackets
+    private sealed class RenderPackets(NativeReference<INativeRenderClient> packets) : IWasapiRenderPackets, IWasapiNativePacketService
     {
         public nint GetBuffer(uint frames)
         {

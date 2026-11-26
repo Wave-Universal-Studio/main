@@ -5,9 +5,10 @@ namespace WaveStudio.Audio.Engine;
 // O owner da captura é criado/usado/descartado em uma única thread MTA.
 // Não ativa IAudioClient, não chama Start e não cria tarefas: apenas consome
 // um pacote já disponibilizado por um cliente WASAPI explicitamente autorizado.
-internal sealed class WasapiBusCaptureOwnerStep : IDisposable
+internal sealed class WasapiBusCaptureOwnerStep : IWasapiBusOwner
 {
     private readonly IWasapiCapturePackets packets;
+    private readonly WasapiBusNativeBinding<IWasapiCapturePackets>? nativeBinding;
     private readonly WasapiCaptureBlockAdapter adapter;
     private readonly TransportEndpoint endpoint;
     private readonly int threadId;
@@ -22,9 +23,15 @@ internal sealed class WasapiBusCaptureOwnerStep : IDisposable
     public bool ResourcesRetained => retained;
 
     public WasapiBusCaptureOwnerStep(IWasapiCapturePackets packets, WasapiCaptureBlockAdapter adapter,
-        TransportEndpoint endpoint, PcmFloatFormat format)
+        TransportEndpoint endpoint, PcmFloatFormat format) : this(packets, adapter, endpoint, format, null) { }
+
+    private WasapiBusCaptureOwnerStep(IWasapiCapturePackets packets, WasapiCaptureBlockAdapter adapter,
+        TransportEndpoint endpoint, PcmFloatFormat format, WasapiBusNativeBinding<IWasapiCapturePackets>? binding)
     {
         RequireMta();
+        if (binding is null && packets is IWasapiNativePacketService)
+            throw new ArgumentException("Captura nativa exige o vínculo do clock do mesmo cliente.", nameof(packets));
+        nativeBinding = binding;
         this.packets = packets ?? throw new ArgumentNullException(nameof(packets));
         this.adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         ArgumentNullException.ThrowIfNull(format);
@@ -37,6 +44,31 @@ internal sealed class WasapiBusCaptureOwnerStep : IDisposable
         threadId = Environment.CurrentManagedThreadId;
         Format = format;
         expectedFrames = format.SampleRate / 100;
+    }
+
+    public static WasapiBusCaptureOwnerStep Attach(IWasapiBoundStreamClient client, WasapiCaptureBlockAdapter adapter,
+        TransportEndpoint endpoint, PcmFloatFormat format)
+    {
+        RequireMta();
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(adapter);
+        endpoint.Validate();
+        if (client.Endpoint != endpoint || endpoint.Direction != EndpointDirection.Capture ||
+            adapter.Endpoint != endpoint || adapter.Format != format || client.PreparedFormat != adapter.NativeFormat)
+            throw new ArgumentException("Cliente, adaptador, endpoint e formato de captura precisam coincidir.");
+
+        var binding = WasapiBusNativeBinding<IWasapiCapturePackets>.Open(client, static ready => ready.OpenCapture());
+        try { return new(binding.Packets, adapter, endpoint, format, binding); }
+        catch { binding.Dispose(); throw; }
+    }
+
+    internal bool HasNativeClock => nativeBinding is not null;
+
+    internal NativeClockSample ReadNativeClock()
+    {
+        CheckOwner();
+        if (!IsAvailableOnOwner || nativeBinding is null) throw new InvalidOperationException("Clock de captura indisponível.");
+        return nativeBinding.ReadClock();
     }
 
     // A posição do pacote está em frames de captura, separada das unidades do clock do cliente.
@@ -100,8 +132,23 @@ internal sealed class WasapiBusCaptureOwnerStep : IDisposable
         CheckOwner();
         if (disposed) return;
         disposed = true;
-        // Sem confirmação de ReleaseBuffer não é seguro liberar o owner COM.
-        if (!retained) packets.Dispose();
+        // Sem confirmação de ReleaseBuffer os filhos continuam retidos junto do cliente.
+        DisposeServices();
+    }
+
+    private void DisposeServices()
+    {
+        if (retained) return;
+        try
+        {
+            if (nativeBinding is null) packets.Dispose();
+            else nativeBinding.Dispose();
+        }
+        catch
+        {
+            retained = true;
+            throw;
+        }
     }
 
     private void CheckOwner()
@@ -121,9 +168,10 @@ internal sealed class WasapiBusCaptureOwnerStep : IDisposable
 // O render conserva a mesma regra de propriedade de thread e de buffer.
 // Somente prepara um pacote para IAudioRenderClient já iniciado com consentimento;
 // não altera volume, dispositivo padrão ou destino virtual no Windows.
-internal sealed class WasapiBusRenderOwnerStep : IDisposable
+internal sealed class WasapiBusRenderOwnerStep : IWasapiBusOwner
 {
     private readonly IWasapiRenderPackets packets;
+    private readonly WasapiBusNativeBinding<IWasapiRenderPackets>? nativeBinding;
     private readonly WasapiRenderBlockAdapter adapter;
     private readonly int threadId;
     private readonly uint frames;
@@ -139,8 +187,15 @@ internal sealed class WasapiBusRenderOwnerStep : IDisposable
 
     public WasapiBusRenderOwnerStep(IWasapiRenderPackets packets,
         WasapiRenderBlockAdapter adapter, TransportEndpoint endpoint, PcmFloatFormat format, WasapiPcm native)
+        : this(packets, adapter, endpoint, format, native, null) { }
+
+    private WasapiBusRenderOwnerStep(IWasapiRenderPackets packets, WasapiRenderBlockAdapter adapter, TransportEndpoint endpoint,
+        PcmFloatFormat format, WasapiPcm native, WasapiBusNativeBinding<IWasapiRenderPackets>? binding)
     {
         RequireMta();
+        if (binding is null && packets is IWasapiNativePacketService)
+            throw new ArgumentException("Render nativo exige o vínculo do clock do mesmo cliente.", nameof(packets));
+        nativeBinding = binding;
         this.packets = packets ?? throw new ArgumentNullException(nameof(packets));
         this.adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         ArgumentNullException.ThrowIfNull(format);
@@ -150,12 +205,39 @@ internal sealed class WasapiBusRenderOwnerStep : IDisposable
             throw new ArgumentException("O endpoint de render precisa ser de reprodução.", nameof(endpoint));
         Endpoint = endpoint;
         native.Validate();
-        if (adapter.Format != format || native.FloatFormat != format)
+        if (adapter.Format != format || native.FloatFormat != format || adapter.NativeFormat != native)
             throw new NotSupportedException("O formato do owner render precisa coincidir com o barramento.");
         threadId = Environment.CurrentManagedThreadId;
         Format = format;
         frames = (uint)(format.SampleRate / 100);
         bytesPerBlock = checked((int)frames * native.BlockAlign);
+    }
+
+    public static WasapiBusRenderOwnerStep Attach(IWasapiBoundStreamClient client, WasapiRenderBlockAdapter adapter,
+        TransportEndpoint endpoint, PcmFloatFormat format, WasapiPcm native)
+    {
+        RequireMta();
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(adapter);
+        ArgumentNullException.ThrowIfNull(native);
+        endpoint.Validate();
+        native.Validate();
+        if (client.Endpoint != endpoint || endpoint.Direction != EndpointDirection.Playback ||
+            adapter.Format != format || native.FloatFormat != format || adapter.NativeFormat != native || client.PreparedFormat != native)
+            throw new ArgumentException("Cliente, adaptador, endpoint e formato de render precisam coincidir.");
+
+        var binding = WasapiBusNativeBinding<IWasapiRenderPackets>.Open(client, static ready => ready.OpenRender());
+        try { return new(binding.Packets, adapter, endpoint, format, native, binding); }
+        catch { binding.Dispose(); throw; }
+    }
+
+    internal bool HasNativeClock => nativeBinding is not null;
+
+    internal NativeClockSample ReadNativeClock()
+    {
+        CheckOwner();
+        if (!IsAvailableOnOwner || nativeBinding is null) throw new InvalidOperationException("Clock de render indisponível.");
+        return nativeBinding.ReadClock();
     }
 
     public unsafe bool TryRender(MixBus bus, long block, CancellationToken cancellation = default)
@@ -199,7 +281,22 @@ internal sealed class WasapiBusRenderOwnerStep : IDisposable
         CheckOwner();
         if (disposed) return;
         disposed = true;
-        if (!retained) packets.Dispose();
+        DisposeServices();
+    }
+
+    private void DisposeServices()
+    {
+        if (retained) return;
+        try
+        {
+            if (nativeBinding is null) packets.Dispose();
+            else nativeBinding.Dispose();
+        }
+        catch
+        {
+            retained = true;
+            throw;
+        }
     }
 
     private void CheckOwner()

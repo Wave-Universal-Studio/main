@@ -7,7 +7,7 @@ using Xunit;
 
 namespace WaveStudio.Tests;
 
-public sealed class OwnedBusSchedulerTests
+public sealed partial class OwnedBusSchedulerTests
 {
     private static readonly PcmFloatFormat Mono = new(48000, 1);
 

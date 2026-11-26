@@ -12,6 +12,20 @@ internal interface IWasapiStreamClient : IWasapiPreparationClient
     IWasapiCapturePackets OpenCapture();
     IWasapiRenderPackets OpenRender();
 }
+internal interface IWasapiBoundStreamClient : IWasapiStreamClient
+{
+    TransportEndpoint Endpoint { get; }
+    WasapiPcm PreparedFormat { get; }
+    IDisposable BorrowBusServices();
+}
+
+internal interface IWasapiNativeBoundStreamClient : IWasapiBoundStreamClient { }
+internal interface IWasapiNativePacketService { }
+internal interface IWasapiBusOwner : IDisposable
+{
+    bool ResourcesRetained { get; }
+}
+
 internal readonly record struct WasapiCaptureBuffer(int HResult, nint Data, uint Frames, uint Flags, ulong Position, ulong Qpc100ns);
 internal interface IWasapiCapturePackets : IDisposable
 {

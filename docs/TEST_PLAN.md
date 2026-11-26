@@ -2,6 +2,12 @@
 
 A [validação integrada local de 24/11](PHYSICAL_VALIDATION.md) reúne a regressão Release no Windows real, o ensaio de leitura dos medidores, a pré-verificação do VB-CABLE e a matriz de testes físicos pendentes por fase.
 
+## F5-I2C4 — clocks de clientes preparados
+
+Os testes dirigidos verificam a ordem de leitura dos clocks antes do QPC, o primeiro corte sem PCM, HRESULT negativo e incerto, falha de leitura, formato PCM, geração, recusa de tempo e pacotes injetados no caminho nativo, rollback de aquisição, liberação independente de owners e quarentena do guard. Os substitutos exercitam as interfaces e a MTA. O hardware não é inicializado nesta suíte.
+
+Os 47 casos dirigidos passaram. Os 979 casos da base foram preservados. Com os 14 novos casos, Debug e Release aprovaram 993 cada, com zero falhas, sete Explicit excluídos e builds não incrementais com zero avisos. Debug seed 20261114 em 86,609 s e Release seed 20261113 em 59,504 s.
+
 ## F5-I2C3 — admissão de clocks independentes
 
 Os casos dirigidos combinam o scheduler e os passos MTA com clocks e pacotes injetados. Verificam âncoras sem PCM, frequências nativas independentes, progresso nominal acumulado, janela comum, identidades incompatíveis, mudança de geração, falta de pacote, cancelamento, liberação incerta e isolamento Personal/Stream. Um novo ciclo precisa de novo corte e nenhum teste inicia áudio físico.

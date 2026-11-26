@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using WaveStudio.Audio;
 
 namespace WaveStudio.Audio.Engine;
@@ -7,7 +8,7 @@ namespace WaveStudio.Audio.Engine;
 internal readonly record struct OwnedBusCaptureSlot(MixSource Source, WasapiBusCaptureOwnerStep Owner);
 internal readonly record struct OwnedBusRenderSlot(TransportEndpoint Endpoint, MixBus Bus, WasapiBusRenderOwnerStep Owner);
 
-internal sealed class OwnedBusScheduler : IDisposable
+internal sealed partial class OwnedBusScheduler : IDisposable
 {
     private readonly long generation;
     private readonly int ownerThread;
@@ -20,10 +21,13 @@ internal sealed class OwnedBusScheduler : IDisposable
     private readonly bool personalBound, streamBound;
     private readonly IDisposable activityLease;
     private readonly OwnedBusClockAdmission clocks;
+    private readonly NativeClockSample[]? nativeCut;
+    private readonly Func<long> readReferenceTime;
     private long lastBlock = -1;
     private long lastTime;
     private bool stopped;
 
+    public bool ResourcesRetained { get; private set; }
     public bool IsRunning => !stopped && !cancellation.IsCancellationRequested;
     public bool ClockAdmitted => IsRunning && clocks.Admitted;
     public OwnedBusClockFailure ClockFailure => clocks.Failure;
@@ -35,6 +39,12 @@ internal sealed class OwnedBusScheduler : IDisposable
         ReadOnlySpan<MixSource> sources, BoundedBusPcmTransport bridge,
         ReadOnlySpan<OwnedBusCaptureSlot> captures, ReadOnlySpan<OwnedBusRenderSlot> renders,
         TransportActivityGuard guard, CancellationToken cancellation = default)
+        : this(generation, format, sources, bridge, captures, renders, guard, cancellation, null, WasapiTime.Now100ns) { }
+
+    private OwnedBusScheduler(long generation, PcmFloatFormat format,
+        ReadOnlySpan<MixSource> sources, BoundedBusPcmTransport bridge,
+        ReadOnlySpan<OwnedBusCaptureSlot> captures, ReadOnlySpan<OwnedBusRenderSlot> renders,
+        TransportActivityGuard guard, CancellationToken cancellation, IDisposable? preparedLease, Func<long> readReferenceTime)
     {
         RequireMta();
         ArgumentNullException.ThrowIfNull(format);
@@ -81,8 +91,13 @@ internal sealed class OwnedBusScheduler : IDisposable
                     throw new ArgumentException("Um destino não pode compartilhar owner, bus ou endpoint.", nameof(renders));
         }
 
+        int attached = captureSnapshot.Count(slot => slot.Owner.HasNativeClock) + renderSnapshot.Count(slot => slot.Owner.HasNativeClock);
+        if (preparedLease is null ? attached != 0 : attached != captureSnapshot.Length + renderSnapshot.Length)
+            throw new ArgumentException("Os serviços nativos exigem aquisição conjunta pelo scheduler.");
+        nativeCut = attached == 0 ? null : new NativeClockSample[attached];
+        this.readReferenceTime = readReferenceTime;
         clocks = new(captureSnapshot, renderSnapshot, format.SampleRate);
-        var lease = guard.TryAcquireOwnedBus(generation)
+        var lease = preparedLease ?? guard.TryAcquireOwnedBus(generation)
             ?? throw new InvalidOperationException("Atividade ocupada ou geração do barramento já utilizada.");
         try
         {
@@ -99,18 +114,58 @@ internal sealed class OwnedBusScheduler : IDisposable
             mixer.Start(generation, format, sourceSnapshot, cancellation: cancellation);
             activityLease = lease;
         }
-        catch { lease.Dispose(); throw; }
+        catch
+        {
+            if (preparedLease is null) lease.Dispose();
+            throw;
+        }
     }
 
     // O corte segue a ordem dos slots de captura e depois dos de render.
     // A primeira leitura válida só estabelece as âncoras, sem adquirir buffers.
-    public bool Tick(long block, long now100ns, ReadOnlySpan<NativeClockSample> samples)
+    public bool Tick(long block)
     {
         CheckOwner();
         if (stopped) return false;
-        if (cancellation.IsCancellationRequested || block < 0 || now100ns <= 0 ||
-            (lastBlock >= 0 && (block != lastBlock + 1 ||
-             now100ns <= lastTime || now100ns - lastTime > OwnedBusClockAdmission.MaximumGap100ns)))
+        if (nativeCut is null || cancellation.IsCancellationRequested || !NextBlock(block))
+        {
+            Stop();
+            return false;
+        }
+
+        try
+        {
+            int index = 0;
+            foreach (var source in captures) nativeCut[index++] = source.Owner.ReadNativeClock();
+            foreach (var output in renders) nativeCut[index++] = output.Owner.ReadNativeClock();
+            // O tempo de referência é colhido depois de todos os GetPosition.
+            return Advance(block, readReferenceTime(), nativeCut);
+        }
+        catch
+        {
+            Stop();
+            throw;
+        }
+    }
+
+    public bool Tick(long block, long now100ns, ReadOnlySpan<NativeClockSample> samples)
+    {
+        CheckOwner();
+        if (nativeCut is not null)
+        {
+            Stop();
+            return false;
+        }
+        return Advance(block, now100ns, samples);
+    }
+
+    private bool NextBlock(long block) => block >= 0 && (lastBlock < 0 || block == lastBlock + 1);
+
+    private bool Advance(long block, long now100ns, ReadOnlySpan<NativeClockSample> samples)
+    {
+        if (stopped) return false;
+        if (cancellation.IsCancellationRequested || !NextBlock(block) || now100ns <= 0 ||
+            (lastBlock >= 0 && (now100ns <= lastTime || now100ns - lastTime > OwnedBusClockAdmission.MaximumGap100ns)))
         {
             Stop();
             return false;
@@ -177,29 +232,10 @@ internal sealed class OwnedBusScheduler : IDisposable
         mixer.Stop(generation);
         bridge.Dispose();
 
-        bool retained = false;
-        try
-        {
-            foreach (var input in captures)
-            {
-                input.Owner.Dispose();
-                retained |= input.Owner.ResourcesRetained;
-            }
-            foreach (var output in renders)
-            {
-                output.Owner.Dispose();
-                retained |= output.Owner.ResourcesRetained;
-            }
-        }
-        catch
-        {
-            // Sem liberação confirmada, nunca admitir nova prova nativa sobre os mesmos recursos.
-            WasapiResourceScope.Retain(this);
-            throw;
-        }
-
-        if (retained) WasapiResourceScope.Retain(this);
+        ResourcesRetained = ReleaseOwners(captures, renders, out var failure);
+        if (ResourcesRetained) WasapiResourceScope.Retain(activityLease);
         else activityLease.Dispose();
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
     public void Dispose() => Stop();
