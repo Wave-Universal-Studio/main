@@ -88,6 +88,8 @@ O runner aceita agora `DISABLED` como original do OBS. Na primeira tentativa de 
 
 Uma observação de 35 s posterior não encontrou sessão ativa do Chrome no pino escolhido. O OBS portátil permaneceu em cena isolada e com áudio desativado. Nenhum Start do runner externo ocorreu. A aceitação instrumentada continua aguardando a confirmação da saída exclusiva do navegador e a execução das duas fases.
 
+Após o usuário confirmar a saída geral restaurada, uma leitura encontrou novamente os seis padrões originais. A página de teste foi reaberta com silêncio digital. O WASAPI mostrou a sessão ativa do Chrome no headset e nenhum produtor no pino esperado do cabo. A verificação manteve a prova bloqueada antes de áudio do Wave Studio. A configuração original do OBS permaneceu desativada. Ao encerrar, o usuário confirmou o Chrome em Padrão, as duas janelas isoladas foram fechadas e a comparação reconfirmou os seis padrões e os níveis, mutes e balanços disponíveis.
+
 ## Pendências por fase
 
 | Fase | Evidência disponível | Pendência física ou de aceitação |

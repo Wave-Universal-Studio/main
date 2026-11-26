@@ -8,6 +8,8 @@ O coordenador dos barramentos prepara, inicia e para clientes WASAPI sem persist
 
 O runner do cabo simples aceita a fonte do OBS originalmente desativada e exige restaurar esse estado. O diagnóstico nominal de até 120 s preserva a janela e os limites do controlador. A prova acústica explícita usa três sinais sintéticos curtos e conserva somente métricas. Os resultados reais e as pendências permanecem no [relatório físico](docs/PHYSICAL_VALIDATION.md).
 
+A [PR #20](https://github.com/Wave-Universal-Studio/main/pull/20) foi integrada em `a5acc16`. A [CI Windows x64](https://github.com/Wave-Universal-Studio/main/actions/runs/45905029239) confirmou 1.026 testes comuns aprovados em Debug e 1.026 em Release, zero falhas, oito Explicit excluídos por configuração e builds sem avisos ou erros. A nova referência preserva os 993 casos comuns do checkpoint e acrescenta 33.
+
 ## F5-I2C4 — clocks dos clientes WASAPI preparados
 
 O scheduler recebe na MTA os clientes já preparados. Os serviços `IAudioClock` e de pacotes vêm do mesmo cliente. O corte coleta primeiro todas as leituras de hardware e só depois o QPC real. Os validadores da F5-I2C3 mantêm as regras de admissão e quarentena por geração. A vinculação protege o cliente pai até confirmar a liberação dos serviços. A coleta e o fechamento foram verificados com substitutos de COM. A integração ainda depende do coordenador que prepara, inicia e para os streams de hardware.
