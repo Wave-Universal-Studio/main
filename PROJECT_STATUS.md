@@ -6,7 +6,11 @@ Atualizado em 26/11/2026.
 
 O scheduler recebe na MTA os clientes já preparados. Os serviços `IAudioClock` e de pacotes vêm do mesmo cliente. O corte coleta primeiro todas as leituras de hardware e só depois o QPC real. Os validadores da F5-I2C3 mantêm as regras de admissão e quarentena por geração. A vinculação protege o cliente pai até confirmar a liberação dos serviços. A coleta e o fechamento foram verificados com substitutos de COM. A integração ainda depende do coordenador que prepara, inicia e para os streams de hardware.
 
-A reconexão assistida readmitiu o mesmo headset e recuperou sua leitura de pico, preservando os seis padrões do Windows. A captura concorrente ainda bloqueia a coleta física de clocks. [Evidência física](docs/PHYSICAL_VALIDATION.md#reconexão-assistida-do-headset-em-26112026).
+Integrada em `a04ca42` pela [PR #19](https://github.com/Wave-Universal-Studio/main/pull/19). Em cada configuração x64, localmente e na CI, 993 testes comuns aprovados, zero falhas e sete Explicit excluídos. Os builds Debug e Release concluíram com zero avisos e erros. A referência anterior era 979 testes por configuração. [CI Windows x64](https://github.com/Wave-Universal-Studio/main/actions/runs/45900342596).
+
+A reconexão assistida readmitiu o mesmo headset e recuperou sua leitura de pico, preservando os seis padrões do Windows. Após a desativação da sobreposição da NVIDIA, o microfone ficou livre. Uma coleta SILENT de 10,001 s confirmou transporte nominal com zero drops ou underruns e liberação dos dois lados. As janelas estimáveis ficaram separadas por 2,755 s, aquém dos 4 s exigidos para a evidência de drift. A coleta usou a prova isolada da Fase 2. [Evidências físicas](docs/PHYSICAL_VALIDATION.md#coleta-silenciosa-dos-relógios-e-do-transporte-em-26112026).
+
+A próxima fronteira da Fase 5 é coordenar preparação, Start, Stop e recuperação dos clientes no owner MTA, mantendo a quarentena por geração. Para a aceitação física, faltam a latência acústica, a estabilidade prolongada e a execução instrumentada das duas rotas externas.
 
 ## Implementado — F5-I2C3, 26/11/2026
 
