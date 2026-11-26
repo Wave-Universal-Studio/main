@@ -2,7 +2,7 @@
 
 ## Ciclo de vida da geração WASAPI dos barramentos
 
-`OwnedWasapiBusSession.RunAsync` cria uma MTA por execução explícita. O guard e a geração são reservados antes da ativação. Os clientes são preparados sem persistência, vinculados aos clocks e serviços de pacotes e revalidados antes de Start. Os renders recebem preenchimento SILENT e iniciam antes das capturas. A espera cancelável de 10 ms não tenta recuperar atrasos em rajada.
+`OwnedWasapiBusSession.RunAsync` cria uma MTA por execução explícita. O guard e a geração são reservados antes da ativação. Os clientes são preparados sem persistência, vinculados aos clocks e serviços de pacotes e revalidados antes de Start. Os renders recebem preenchimento SILENT e iniciam antes das capturas. A espera cancelável de 10 ms não tenta recuperar atrasos em rajada. O prazo monotônico é conferido nas etapas do scheduler e antes de liberar um buffer de render com PCM. A MTA mantém a propriedade de chamadas COM síncronas que ainda estejam em andamento.
 
 A ponte e os tickets são invalidados antes de Stop. Todos os clientes cujo Start foi tentado recebem Stop em ordem inversa. Uma falha de parada ou liberação retém os recursos em quarentena, com a MTA nativa sem atividade. Depois do encerramento confirmado, a recuperação exige solicitação explícita e geração superior, com novos clientes, âncoras e filas. O coordenador interno ainda requer calibração física da cadência e dos pacotes para uso contínuo.
 

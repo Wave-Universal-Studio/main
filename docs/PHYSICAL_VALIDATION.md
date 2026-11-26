@@ -62,6 +62,28 @@ Uma tentativa Explicit usou a versão Release da prova no worktree físico, com 
 
 Após o retorno do headset, o preflight em leitura confirmou os quatro endpoints ativos, pareamento do cabo simples, padrões do Windows fora do cabo e ausência de outros produtores ativos nos pinos de render consultados. O estímulo sintético local e o OBS portátil já verificados foram reaproveitados na preparação. Com silêncio digital no perfil isolado do navegador, o operador verificou a saída original **Padrão**. A cópia isolada do OBS abriu com uma cena vazia, sem fontes globais ou de captura. Antes e depois da preparação, o FIFINE estava sem sessões ativas. Os seis padrões, volumes, mutes e balanços disponíveis permaneceram iguais. Nenhuma rota temporária foi aplicada. O snapshot do runner atual distingue padrão e endpoint explícito, mas não representa uma fonte original desativada no OBS. As fases instrumentadas não foram iniciadas. A aprovação manual anterior dos dois fluxos continua registrada.
 
+## Medições físicas após o checkpoint dd5c857, 26/11/2026
+
+Os testes aprovados de reconexão, mixer e aceitação manual dos fluxos foram reaproveitados. As medições abaixo usaram a mesma seleção explícita de microfone e headset. As evidências publicadas contêm apenas métricas agregadas.
+
+### Relógios e transporte prolongado
+
+A primeira coleta agendada para 120 s encerrou aos **13,019 s** com uma rejeição de captura. Foram 1.298 pacotes aceitos, 623.040 frames produzidos, zero drops e underruns e saída SILENT. Stop e Release foram confirmados nos dois lados. Houve 99 cortes coerentes e 28 épocas, sem janela estimável. O último pacote adquirido tinha 96 frames e foi liberado sem consumo. O relatório daquela execução não distinguia o motivo individual da rejeição. O runner passou a registrar motivo, tamanhos, flags da aquisição e QPC da validação sem alterar a proteção. SHA-256 do agregado local `9e1d10ea27961f9b03b5175ee590e7319314c9f5c233ffb129350c624400e649`.
+
+A coleta com esse diagnóstico observou **109,722 s** de saída SILENT, 10.968 pacotes aceitos, 5.264.640 frames produzidos e zero drops ou underruns na fila. O FIFINE marcou `DATA_DISCONTINUITY` em um pacote de 96 frames, fora da inicialização. O runner encerrou conforme o contrato, com Stop e Release confirmados. A duração de 120 s e a cobertura exigida ficaram pendentes.
+
+Foram 895 cortes coerentes e 86 janelas estimáveis, distribuídas por 94,595 s. A maior janela corroborada de uma única época foi de **4,144 s**, acima do mínimo de 4 s. O intervalo relativo render/captura foi de −9.473 a +9.566 ppm. Ele inclui zero e é largo demais para confirmar magnitude, sentido ou necessidade de compensação. A correção permaneceu desativada. SHA-256 do agregado local `209fdebde1b408fca75af8274dc0003376f82b37802193ec4472077f3e205d31`.
+
+### Latência acústica
+
+A referência inicial foi o QPC da entrega ao WASAPI do primeiro frame de cada sinal sintético. A detecção usou o timestamp do primeiro frame do pacote capturado mais o deslocamento correlacionado. O retorno de `GetBuffer` registrou também o atraso observado até a entrega ao aplicativo. As duas medidas incluem o caminho pelo ar, pelo headset e pelo FIFINE. O tempo isolado de propagação pelo ar não foi medido.
+
+Após uma janela de consentimento expirada antes de Start, duas coletas emitiram três sinais de 18 ms com pico digital de −28 dBFS. Em cada coleta, dois dos três sinais passaram na correlação. Na primeira, os pares medidos foram **54,602 / 67,997 ms** e **60,412 / 73,703 ms**. Na segunda, com a concha a 1–2 cm do microfone, foram **56,461 / 68,041 ms** e **60,590 / 73,821 ms**. Cada par é atraso até o frame do microfone e até a leitura pelo aplicativo. Ambas capturaram 108.000 frames e confirmaram liberação. Os quatro valores são medições reais parciais, e a exigência de três marcadores válidos na mesma execução ficou aberta. Nenhum PCM foi gravado. SHA-256 dos agregados locais `b9ab27d99488a1bae83c39eebc9e61b9db1c81e06b88ea1bf05bf751b8a8f0f7` e `65e04eae3c5ccab6e7ab4c0decc7bf1246bde093f2bc739f7dfada993a0fcc5c`.
+
+### Rotas externas
+
+O runner aceita agora `DISABLED` como original do OBS. Na primeira tentativa de abrir o lote, a configuração aplicada no Windows colocou o cabo como saída geral e multimídia. O preflight bloqueou a execução antes de Start. O operador restaurou a saída e a consulta confirmou os seis padrões e todos os níveis disponíveis originais.
+
 ## Pendências por fase
 
 | Fase | Evidência disponível | Pendência física ou de aceitação |

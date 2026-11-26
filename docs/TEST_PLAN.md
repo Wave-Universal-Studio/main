@@ -4,7 +4,7 @@ A [validação integrada local de 24/11](PHYSICAL_VALIDATION.md) reúne a regres
 
 ## Ciclo WASAPI e diagnósticos prolongado e acústico
 
-Testes dirigidos cobrem preparação em MTA, preenchimento SILENT, ordem Start/Stop, cancelamento, revalidação do dispositivo, falha parcial, quarentena, geração nova e prazo de encerramento. Os ensaios do estimador preservam limites de frescor e de incerteza, recusam cruzar descontinuidades e separam cobertura contínua da estimativa. A prova acústica é Explicit. Os casos comuns usam sinais sintéticos para validar atraso conhecido, rejeição de ambiguidade e limites QPC sem reprodução nem captura real.
+Testes dirigidos cobrem preparação em MTA, preenchimento SILENT, ordem Start/Stop, cancelamento, revalidação do dispositivo, falha parcial, quarentena, geração nova e interrupção da entrega por prazo. A chamada nativa síncrona em andamento permanece com a MTA até completar. Os ensaios do estimador preservam limites de frescor e de incerteza, recusam cruzar descontinuidades e separam cobertura contínua da estimativa. A prova acústica é Explicit. Os casos comuns usam sinais sintéticos para validar atraso conhecido, rejeição de ambiguidade e limites QPC sem reprodução nem captura real.
 
 ## Prova de cabo simples — fonte do OBS desativada
 
