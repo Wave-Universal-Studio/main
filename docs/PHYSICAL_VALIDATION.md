@@ -30,6 +30,20 @@ A preparação usou um worktree separado, fixado em `9b12b72` e com a mesma base
 
 A autorização desta etapa foi registrada, mas a janela física ainda depende de microfone livre e presença do operador para os atos físicos e a confirmação local. As sessões em andamento ficaram abertas. Nenhuma tentativa Explicit foi consumida e a aceitação física das etapas permanece em aberto. O escopo da Fase 5 continua sendo o caminho interno validado em simulação.
 
+## Retomada em 26/11/2026
+
+A `main` foi sincronizada até `1f7caf6` por fast-forward, com árvore local limpa. A base foi recompilada em Release x64 com restore locked e auditoria NuGet, zero erros ou avisos. A regressão local teve 959 aprovados, zero falhas e sete Explicit excluídos, em 60,123 s. As medições físicas usaram o apphost Release da mesma base funcional num worktree isolado.
+
+| Prova | Resultado desta janela |
+| --- | --- |
+| Mixer real do Windows | **Aprovado para controle de sessão.** Duas instâncias de teste criaram sessões WASAPI ativas, distintas, no headset e reproduziram exclusivamente zeros digitais. Só as sessões de teste receberam comandos. O mute de uma preservou o da outra. O jogo permaneceu em 70% quando a comunicação caiu de 50% para 25%. Centralizar retornou a 50%. Um ajuste de terceiros simulado por um comando real de sessão a 35% foi preservado pela restauração condicional. Volume e mute originais foram conferidos em ambas as sessões antes de encerrá-las cooperativamente. Esse ensaio confirma o backend e o readback do Windows. O gesto na mesa e o efeito audível com aplicativos de usuário continuam em aberto. |
+| Reconexão USB | O medidor ficou armado, com a seleção explícita do headset, durante 125 s. A remoção não foi observada, o worker não falhou e os seis padrões do Windows coincidiam após o encerramento. A recuperação permanece inconclusiva. |
+| Sincronização de clocks | A ocupação do FIFINE caiu de duas sessões no registro anterior para uma sessão ativa na retomada. A coleta de 10 s ficou bloqueada antes de Start. |
+| Latência real e estabilidade do transporte | Sem nova medida. A leitura de período do dispositivo e as duas fontes silenciosas do mixer não medem latência ponta a ponta nem estabilidade de um transporte com captura. |
+| Navegador → headset e microfone → OBS | O pareamento em leitura e a aceitação manual anterior foram mantidos como evidências. A execução com áudio, o retorno ao estado original e a instrumentação dos dois fluxos continuam pendentes. |
+
+Os logs e os JSON agregados ficam no armazenamento local ignorado pelo Git. O teste do mixer não abriu o microfone, não produziu som audível e encerrou as duas fontes com sucesso. O relatório e os commits contêm apenas resultados técnicos.
+
 ## Pendências por fase
 
 | Fase | Evidência disponível | Pendência física ou de aceitação |
