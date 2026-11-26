@@ -240,13 +240,21 @@ internal sealed class WasapiBusRenderOwnerStep : IWasapiBusOwner
         return nativeBinding.ReadClock();
     }
 
+    internal void PrimeSilence(uint capacity)
+    {
+        CheckOwner();
+        if (!IsAvailableOnOwner || nativeBinding is null || capacity < frames)
+            throw new InvalidOperationException("Render indisponível para preenchimento inicial.");
+        _ = packets.GetBuffer(capacity);
+        ReleaseRenderBuffer(capacity, (uint)TransportPacketFlags.Silent);
+    }
+
     public unsafe bool TryRender(MixBus bus, long block, CancellationToken cancellation = default)
     {
         CheckOwner();
         if (disposed || retained || cancellation.IsCancellationRequested || block < 0) return false;
         nint ptr = packets.GetBuffer(frames);
         bool valid = false;
-        int releaseHr = -1;
         try
         {
             if (ptr != 0 && !cancellation.IsCancellationRequested)
@@ -261,19 +269,24 @@ internal sealed class WasapiBusRenderOwnerStep : IWasapiBusOwner
         {
             // Se a sessão foi invalidada, solta o pacote como silêncio, nunca
             // como conteúdo anterior da fila. O owner nativo não reusa buffer.
-            try { releaseHr = packets.ReleaseBuffer(frames, valid && !cancellation.IsCancellationRequested ? 0u : 2u); }
-            finally
+            ReleaseRenderBuffer(frames, valid && !cancellation.IsCancellationRequested ? 0u : (uint)TransportPacketFlags.Silent);
+        }
+        return valid && !disposed && !cancellation.IsCancellationRequested;
+    }
+
+    private void ReleaseRenderBuffer(uint count, uint flags)
+    {
+        int hr = -1;
+        try { hr = packets.ReleaseBuffer(count, flags); }
+        finally
+        {
+            if (hr != 0)
             {
-                if (releaseHr != 0)
-                {
-                    retained = true;
-                    adapter.FailClosed();
-                }
+                retained = true;
+                adapter.FailClosed();
             }
         }
-        if (releaseHr != 0)
-            throw new WasapiCallException("IAudioRenderClient.ReleaseBuffer", releaseHr);
-        return valid && !disposed && !cancellation.IsCancellationRequested;
+        WasapiCallException.RequireSuccess(hr, "IAudioRenderClient.ReleaseBuffer");
     }
 
     public void Dispose()

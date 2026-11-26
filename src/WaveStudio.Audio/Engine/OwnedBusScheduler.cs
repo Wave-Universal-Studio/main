@@ -25,7 +25,8 @@ internal sealed partial class OwnedBusScheduler : IDisposable
     private readonly Func<long> readReferenceTime;
     private long lastBlock = -1;
     private long lastTime;
-    private bool stopped;
+    private readonly bool lifecycleOwnsLease;
+    private bool stopped, ownersReleased;
 
     public bool ResourcesRetained { get; private set; }
     public bool IsRunning => !stopped && !cancellation.IsCancellationRequested;
@@ -44,7 +45,8 @@ internal sealed partial class OwnedBusScheduler : IDisposable
     private OwnedBusScheduler(long generation, PcmFloatFormat format,
         ReadOnlySpan<MixSource> sources, BoundedBusPcmTransport bridge,
         ReadOnlySpan<OwnedBusCaptureSlot> captures, ReadOnlySpan<OwnedBusRenderSlot> renders,
-        TransportActivityGuard guard, CancellationToken cancellation, IDisposable? preparedLease, Func<long> readReferenceTime)
+        TransportActivityGuard guard, CancellationToken cancellation, IDisposable? preparedLease, Func<long> readReferenceTime,
+        bool lifecycleOwnsLease = false)
     {
         RequireMta();
         ArgumentNullException.ThrowIfNull(format);
@@ -96,6 +98,7 @@ internal sealed partial class OwnedBusScheduler : IDisposable
             throw new ArgumentException("Os serviços nativos exigem aquisição conjunta pelo scheduler.");
         nativeCut = attached == 0 ? null : new NativeClockSample[attached];
         this.readReferenceTime = readReferenceTime;
+        this.lifecycleOwnsLease = lifecycleOwnsLease;
         clocks = new(captureSnapshot, renderSnapshot, format.SampleRate);
         var lease = preparedLease ?? guard.TryAcquireOwnedBus(generation)
             ?? throw new InvalidOperationException("Atividade ocupada ou geração do barramento já utilizada.");
@@ -129,7 +132,7 @@ internal sealed partial class OwnedBusScheduler : IDisposable
         if (stopped) return false;
         if (nativeCut is null || cancellation.IsCancellationRequested || !NextBlock(block))
         {
-            Stop();
+            EndTicking();
             return false;
         }
 
@@ -143,7 +146,7 @@ internal sealed partial class OwnedBusScheduler : IDisposable
         }
         catch
         {
-            Stop();
+            EndTicking();
             throw;
         }
     }
@@ -153,7 +156,7 @@ internal sealed partial class OwnedBusScheduler : IDisposable
         CheckOwner();
         if (nativeCut is not null)
         {
-            Stop();
+            EndTicking();
             return false;
         }
         return Advance(block, now100ns, samples);
@@ -167,13 +170,13 @@ internal sealed partial class OwnedBusScheduler : IDisposable
         if (cancellation.IsCancellationRequested || !NextBlock(block) || now100ns <= 0 ||
             (lastBlock >= 0 && (now100ns <= lastTime || now100ns - lastTime > OwnedBusClockAdmission.MaximumGap100ns)))
         {
-            Stop();
+            EndTicking();
             return false;
         }
 
         if (!clocks.Observe(samples, now100ns))
         {
-            Stop();
+            EndTicking();
             return false;
         }
         lastBlock = block;
@@ -181,7 +184,7 @@ internal sealed partial class OwnedBusScheduler : IDisposable
         if (!ClockAdmitted)
         {
             if (IsRunning) return true;
-            Stop();
+            EndTicking();
             return false;
         }
 
@@ -190,13 +193,13 @@ internal sealed partial class OwnedBusScheduler : IDisposable
             foreach (var source in captures)
                 if (!source.Owner.TryCapture(block, now100ns, cancellation, OwnedBusClockAdmission.Block100ns))
                 {
-                    Stop();
+                    EndTicking();
                     return false;
                 }
 
             if (!mixer.Process(generation, block))
             {
-                Stop();
+                EndTicking();
                 return false;
             }
 
@@ -209,32 +212,56 @@ internal sealed partial class OwnedBusScheduler : IDisposable
             foreach (var output in renders)
                 if (!output.Owner.TryRender(output.Bus, block, cancellation))
                 {
-                    Stop();
+                    EndTicking();
                     return false;
                 }
 
             if (IsRunning) return true;
-            Stop();
+            EndTicking();
             return false;
         }
         catch
         {
-            Stop();
+            EndTicking();
             throw;
         }
     }
 
-    public void Stop()
+    internal void PrimeOutputSilence(int index, uint capacity)
+    {
+        CheckOwner();
+        if (!lifecycleOwnsLease || stopped || lastBlock >= 0)
+            throw new InvalidOperationException("O render só pode ser preenchido no preparo do ciclo de vida.");
+        renders[index].Owner.PrimeSilence(capacity);
+    }
+
+    private void EndTicking()
+    {
+        if (lifecycleOwnsLease) Quiesce();
+        else Stop();
+    }
+
+    // Fecha o PCM imediatamente, mas deixa Stop nativo e descarte de filhos para o coordenador.
+    internal void Quiesce()
     {
         CheckOwner();
         if (stopped) return;
         stopped = true;
         mixer.Stop(generation);
         bridge.Dispose();
+    }
 
+    public void Stop()
+    {
+        Quiesce();
+        if (ownersReleased) return;
+        ownersReleased = true;
         ResourcesRetained = ReleaseOwners(captures, renders, out var failure);
-        if (ResourcesRetained) WasapiResourceScope.Retain(activityLease);
-        else activityLease.Dispose();
+        if (!lifecycleOwnsLease)
+        {
+            if (ResourcesRetained) WasapiResourceScope.Retain(activityLease);
+            else activityLease.Dispose();
+        }
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 

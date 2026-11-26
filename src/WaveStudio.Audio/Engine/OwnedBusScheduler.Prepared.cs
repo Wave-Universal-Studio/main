@@ -9,7 +9,23 @@ internal sealed partial class OwnedBusScheduler
     // Reserva a geração antes dos GetService. O chamador já preparou os clientes na mesma MTA.
     public static OwnedBusScheduler CreatePrepared(long generation, PcmFloatFormat format, BoundedBusPcmTransport bridge,
         ReadOnlySpan<PreparedBusCaptureSlot> inputs, ReadOnlySpan<PreparedBusRenderSlot> outputs,
-        TransportActivityGuard guard, CancellationToken cancellation = default, Func<long>? readReferenceTime = null)
+        TransportActivityGuard guard, CancellationToken cancellation = default, Func<long>? readReferenceTime = null) =>
+        CreatePreparedCore(generation, format, bridge, inputs, outputs, guard, cancellation, readReferenceTime, null);
+
+    internal static OwnedBusScheduler CreateForLifecycle(long generation, PcmFloatFormat format, BoundedBusPcmTransport bridge,
+        ReadOnlySpan<PreparedBusCaptureSlot> inputs, ReadOnlySpan<PreparedBusRenderSlot> outputs,
+        TransportActivityGuard guard, TransportActivityGuard.OwnedBusLease lifecycleLease,
+        CancellationToken cancellation, Func<long>? readReferenceTime)
+    {
+        if (!lifecycleLease.Authorizes(guard, generation))
+            throw new InvalidOperationException("O ciclo de vida precisa reservar a geração antes de preparar os clientes.");
+        return CreatePreparedCore(generation, format, bridge, inputs, outputs, guard, cancellation, readReferenceTime, lifecycleLease);
+    }
+
+    private static OwnedBusScheduler CreatePreparedCore(long generation, PcmFloatFormat format, BoundedBusPcmTransport bridge,
+        ReadOnlySpan<PreparedBusCaptureSlot> inputs, ReadOnlySpan<PreparedBusRenderSlot> outputs,
+        TransportActivityGuard guard, CancellationToken cancellation, Func<long>? readReferenceTime,
+        TransportActivityGuard.OwnedBusLease? lifecycleLease)
     {
         RequireMta();
         ArgumentNullException.ThrowIfNull(format);
@@ -31,7 +47,7 @@ internal sealed partial class OwnedBusScheduler
 
         var captures = new OwnedBusCaptureSlot[inputs.Length];
         var renders = new OwnedBusRenderSlot[outputs.Length];
-        var lease = guard.TryAcquireOwnedBus(generation)
+        var lease = lifecycleLease ?? guard.TryAcquireOwnedBus(generation)
             ?? throw new InvalidOperationException("Atividade ocupada ou geração do barramento já utilizada.");
         try
         {
@@ -50,14 +66,16 @@ internal sealed partial class OwnedBusScheduler
                     output.Endpoint, format, output.Client.PreparedFormat));
             }
             return new(generation, format, sources, bridge, captures, renders, guard, cancellation, lease,
-                readReferenceTime ?? WasapiTime.Now100ns);
+                readReferenceTime ?? WasapiTime.Now100ns, lifecycleLease is not null);
         }
         catch (Exception error)
         {
             bool retained = ReleaseOwners(captures, renders, out var cleanup);
-            if (retained || error is WasapiBusBindingCleanupException)
-                WasapiResourceScope.Retain(lease);
-            else lease.Dispose();
+            if (lifecycleLease is null)
+            {
+                if (retained || error is WasapiBusBindingCleanupException) WasapiResourceScope.Retain(lease);
+                else lease.Dispose();
+            }
             if (cleanup is not null) throw new WasapiBusBindingCleanupException(new AggregateException(error, cleanup));
             throw;
         }
