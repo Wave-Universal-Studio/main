@@ -6,6 +6,8 @@ A [validação integrada local de 24/11](PHYSICAL_VALIDATION.md) reúne a regres
 
 Testes dirigidos cobrem preparação em MTA, preenchimento SILENT, ordem Start/Stop, cancelamento, revalidação do dispositivo, falha parcial, quarentena, geração nova e interrupção da entrega por prazo. A chamada nativa síncrona em andamento permanece com a MTA até completar. Os ensaios do estimador preservam limites de frescor e de incerteza, recusam cruzar descontinuidades e separam cobertura contínua da estimativa. A prova acústica é Explicit. Os casos comuns usam sinais sintéticos para validar atraso conhecido, rejeição de ambiguidade e limites QPC sem reprodução nem captura real.
 
+Nas regressões simuladas, o coletor de ciclos observa a parada do owner antes de aguardar o relatório assíncrono. O caso de transporte SILENT coordena um pacote completo da captura até a FIFO e o render. O caso de timestamp inválido também confere a flag rejeitada, a devolução sem consumo e a ausência de entrega após a falha.
+
 ## Prova de cabo simples — fonte do OBS desativada
 
 Os testes dirigidos distinguem os três valores do snapshot, recusam `DISABLED` no navegador e exercitam o lote com o OBS desligado durante navegador e quietude. A seleção temporária habilita apenas a entrada do cabo. Voltar a Padrão é tratado como conflito quando o original foi Desativado.

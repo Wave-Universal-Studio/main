@@ -176,11 +176,36 @@ public sealed class WasapiSilentTests
     public async Task SilentTransportPrimesBeforeRenderThenStartsCaptureOnStableOwnersAndReleasesInOrder()
     {
         var route = WasapiContractTests.Route(); var calls = new Calls(route); var guard = new TransportActivityGuard();
+        const uint frames = 480;
+        calls.Input.PacketLimit = 1;
+        calls.Input.PacketFrames = frames;
+        int capturePublished = 0;
+        bool renderScheduled = false;
+        // O próximo Next ocorre após liberar o pacote inteiro e publicar seus frames na FIFO.
+        calls.Input.OnStep = step =>
+        {
+            if (step == "Next" && !calls.Input.CaptureReleases.IsEmpty)
+                Volatile.Write(ref capturePublished, 1);
+        };
+        calls.Output.RenderPaddingOverride = () =>
+        {
+            if (renderScheduled || Volatile.Read(ref capturePublished) == 0) return calls.Output.Capacity;
+            renderScheduled = true;
+            return calls.Output.Capacity - frames;
+        };
         await using var session = new WasapiSilentSession(route, guard, calls.Open);
         var result = await session.RunAsync(Duration, TestContext.Current.CancellationToken);
-        Assert.True(result.Completed); Assert.False(result.ResourcesRetained); Assert.Null(result.Failure); Assert.True(result.MovementProven); Assert.True(result.TransportObserved);
+        Assert.True(result.Completed); Assert.False(result.ResourcesRetained); Assert.Null(result.Failure);
+        Assert.True(result.MovementProven,
+            $"A captura confirmou {result.Capture.MovementSamples} leituras de movimento e o render confirmou {result.Playback.MovementSamples}.");
+        Assert.True(result.TransportObserved,
+            $"Duração concluída = {result.DurationReached}, frames aceitos = {result.Capture.FramesAccepted}, frames lidos da FIFO = {result.ReadFrames}.");
         Assert.True(result.AlwaysSilent); Assert.False(result.DriftControlEnabled); Assert.Equal(4096, result.FifoCapacityFrames);
-        Assert.Equal(1056, result.Playback.PrimedFrames); Assert.True(result.ProducedFrames > 0); Assert.True(result.Playback.FramesReleased > 0);
+        Assert.Equal(1056, result.Playback.PrimedFrames);
+        Assert.Equal(frames, result.Capture.FramesAccepted);
+        Assert.Equal(frames, result.ProducedFrames);
+        Assert.Equal(frames, result.ReadFrames);
+        Assert.Equal(result.Playback.PrimedFrames + frames, result.Playback.FramesReleased);
         Assert.Equal(result.Capture.PacketsAcquired, result.Capture.PacketsReleased);
         Assert.Equal(result.Capture.PacketsReleased, result.Capture.PacketsAccepted);
         Assert.Equal(0, result.Capture.StartupDiscardedPackets);

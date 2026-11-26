@@ -72,6 +72,8 @@ A primeira coleta agendada para 120 s encerrou aos **13,019 s** com uma rejeiç�
 
 A coleta com esse diagnóstico observou **109,722 s** de saída SILENT, 10.968 pacotes aceitos, 5.264.640 frames produzidos e zero drops ou underruns na fila. O FIFINE marcou `DATA_DISCONTINUITY` em um pacote de 96 frames, fora da inicialização. O runner encerrou conforme o contrato, com Stop e Release confirmados. A duração de 120 s e a cobertura exigida ficaram pendentes.
 
+O tamanho anunciado e o entregue coincidiram, e a posição informada era a próxima esperada. A fila entregou 5.262.336 frames e variou de 1.920 a 2.400 frames nos cortes de regime. A consulta ao log System em volta dos dois encerramentos não encontrou eventos de áudio, USB, PnP ou energia correlacionados. A origem da descontinuidade continua indeterminada.
+
 Foram 895 cortes coerentes e 86 janelas estimáveis, distribuídas por 94,595 s. A maior janela corroborada de uma única época foi de **4,144 s**, acima do mínimo de 4 s. O intervalo relativo render/captura foi de −9.473 a +9.566 ppm. Ele inclui zero e é largo demais para confirmar magnitude, sentido ou necessidade de compensação. A correção permaneceu desativada. SHA-256 do agregado local `209fdebde1b408fca75af8274dc0003376f82b37802193ec4472077f3e205d31`.
 
 ### Latência acústica
@@ -83,6 +85,8 @@ Após uma janela de consentimento expirada antes de Start, duas coletas emitiram
 ### Rotas externas
 
 O runner aceita agora `DISABLED` como original do OBS. Na primeira tentativa de abrir o lote, a configuração aplicada no Windows colocou o cabo como saída geral e multimídia. O preflight bloqueou a execução antes de Start. O operador restaurou a saída e a consulta confirmou os seis padrões e todos os níveis disponíveis originais.
+
+Uma observação de 35 s posterior não encontrou sessão ativa do Chrome no pino escolhido. O OBS portátil permaneceu em cena isolada e com áudio desativado. Nenhum Start do runner externo ocorreu. A aceitação instrumentada continua aguardando a confirmação da saída exclusiva do navegador e a execução das duas fases.
 
 ## Pendências por fase
 
