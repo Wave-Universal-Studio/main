@@ -2,6 +2,12 @@
 
 A [validação integrada local de 24/11](PHYSICAL_VALIDATION.md) reúne a regressão Release no Windows real, o ensaio de leitura dos medidores, a pré-verificação do VB-CABLE e a matriz de testes físicos pendentes por fase.
 
+## F5-I2C3 — admissão de clocks independentes
+
+Os casos dirigidos combinam o scheduler e os passos MTA com clocks e pacotes injetados. Verificam âncoras sem PCM, frequências nativas independentes, progresso nominal acumulado, janela comum, identidades incompatíveis, mudança de geração, falta de pacote, cancelamento, liberação incerta e isolamento Personal/Stream. Um novo ciclo precisa de novo corte e nenhum teste inicia áudio físico.
+
+A base Release do Windows local confirmou 959 comuns. Os builds finais Debug e Release foram não incrementais. Os 33 casos dirigidos passaram no Windows x64. As regressões finais aprovaram 979 casos por configuração, 20 acima da base, com zero falhas, sete Explicit excluídos e zero avisos nos builds. Debug seed 20261114 em 87,783 s e Release seed 20261113 em 61,105 s. Os testes físicos da retomada são registrados separadamente.
+
 ## F5-I2C2-OWNED-BUS-SCHEDULER (integrada)
 
 Cinco novos casos MTA injetados verificam fluxo captura→dois barramentos→render com microfone excluído do Stream, MTA/ReleaseBuffer, captura com timestamp futuro e ausência de render, fluxo consecutivo com drenagem de bus sem destino, cancelamento e idempotência de Stop, e rejeição de bindings repetidos. Testes não abrem endpoints nem usam áudio físico. A [CI Windows x64 final](https://github.com/Wave-Universal-Studio/main/actions/runs/45340451874) aprovou **959 comuns Debug e 959 Release**, zero falhas, 7 Explicit excluídos por configuração, builds sem erros ou avisos. Nenhuma alegação de execução contínua em hardware.

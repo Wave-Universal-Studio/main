@@ -1,5 +1,13 @@
 # Arquitetura do Wave Studio
 
+## F5-I2C3 — admissão temporal dos owners WASAPI
+
+A MTA entrega a `OwnedBusScheduler.Tick` um corte QPC dos owners já preparados, na ordem dos slots de captura e depois de reprodução. Cada entrada tem seu próprio `WasapiClockAdapter`, taxa e origem de posição. A primeira leitura apenas estabelece as âncoras. O primeiro bloco pode seguir após a segunda leitura válida, com avanço e unidade/frequência consistentes em todos os endpoints. O recorte exige timestamps presentes e não futuros, idade e intervalo de até 50 ms e diferença de até um bloco de 10 ms entre as leituras. A tolerância nominal existente (0,5% + 2 frames) é aplicada também ao avanço acumulado a partir da âncora de cada clock. São critérios conservadores para o caminho injetado. Posições absolutas e frequências de endpoints distintos permanecem independentes.
+
+A captura desta sessão só publica um pacote PCM que pertença à janela comum de 10 ms e seja contíguo ao anterior da fonte. O construtor verifica identidade, formato, geração, MTA proprietária e a mesma ponte nos slots de entrada e de saída. Uma leitura ausente ou inválida, lacuna, falha de owner ou cancelamento interrompe a sessão e invalida a ponte e os tickets. Um novo owner precisa de uma geração estritamente maior e de novas âncoras. HRESULT ou exceção durante `ReleaseBuffer` conservam os owners e o guard em quarentena. Um buffer já entregue antes de uma falha posterior de outro owner pode terminar de tocar.
+
+O scheduler permanece opt-in, sem ativar dispositivos, inicializar `IAudioClient` ou criar um destino externo. A leitura nativa dos clocks para esse corte, a calibração física e a compensação de drift continuam pendentes.
+
 ## F5-I2C2-OWNED-BUS-SCHEDULER (integrada)
 
 `OwnedBusScheduler` une `WasapiBusCaptureOwnerStep`, `BusMixSession`, `BoundedBusPcmTransport` e `WasapiBusRenderOwnerStep`, com `TransportActivityGuard`. Todos os owners são criados e usados previamente na mesma thread MTA; o scheduler não cria threads, não chama `IAudioClient.Start` e não usa dispositivos por conta própria. Um passo oferece pacotes de captura já adquiridos, soma PCM no mix interno e consome saídas Personal/Stream já preparadas. Destino sem binding é drenado e descartado, nunca enviado a uma saída alternativa.

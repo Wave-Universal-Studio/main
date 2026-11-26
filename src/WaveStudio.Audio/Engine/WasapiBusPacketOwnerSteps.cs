@@ -12,7 +12,11 @@ internal sealed class WasapiBusCaptureOwnerStep : IDisposable
     private readonly TransportEndpoint endpoint;
     private readonly int threadId;
     private readonly int expectedFrames;
-    private long lastQpc, lastPosition = -1;
+    private ulong lastQpc, nextPosition;
+    internal TransportEndpoint Endpoint => endpoint;
+    internal PcmFloatFormat Format { get; }
+    internal BoundedBusPcmTransport Bridge => adapter.Bridge;
+    internal bool IsAvailableOnOwner => !disposed && !retained && Environment.CurrentManagedThreadId == threadId;
     private bool disposed, retained;
 
     public bool ResourcesRetained => retained;
@@ -25,17 +29,20 @@ internal sealed class WasapiBusCaptureOwnerStep : IDisposable
         this.adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         ArgumentNullException.ThrowIfNull(format);
         endpoint.Validate();
-        if (endpoint.Direction != EndpointDirection.Capture)
-            throw new ArgumentException("A fonte do owner deve ser captura.", nameof(endpoint));
+        if (endpoint.Direction != EndpointDirection.Capture || adapter.Endpoint != endpoint)
+            throw new ArgumentException("O adaptador precisa corresponder ao endpoint de captura do owner.", nameof(endpoint));
+        if (adapter.Format != format)
+            throw new ArgumentException("O adaptador precisa corresponder ao formato da fonte.", nameof(format));
         this.endpoint = endpoint;
         threadId = Environment.CurrentManagedThreadId;
+        Format = format;
         expectedFrames = format.SampleRate / 100;
     }
 
-    // O agendador/owner externo é responsável por mapear os relógios dos fluxos
-    // para o mesmo índice de bloco. O filtro de QPC aqui impede apenas timestamp
-    // futuro, antigo, não monotônico ou posição regredida; não comprova drift.
-    public unsafe bool TryCapture(long block, long now100ns, CancellationToken cancellation = default)
+    // A posição do pacote está em frames de captura, separada das unidades do clock do cliente.
+    // A continuidade é exigida antes de publicar o bloco para a ponte PCM.
+    public unsafe bool TryCapture(long block, long now100ns, CancellationToken cancellation = default,
+        ulong maximumPacketAge100ns = (ulong)OwnedBusClockAdmission.MaximumGap100ns)
     {
         CheckOwner();
         if (disposed || retained || cancellation.IsCancellationRequested || block < 0) return false;
@@ -44,14 +51,13 @@ internal sealed class WasapiBusCaptureOwnerStep : IDisposable
         if (packet.HResult != 0) throw new WasapiCallException("IAudioCaptureClient.GetBuffer", packet.HResult);
 
         bool accepted = false;
-        int releaseHresult;
+        int releaseHresult = -1;
         try
         {
-            bool goodClock = packet.Qpc100ns is > 0 and <= long.MaxValue &&
-                now100ns > 0 && (long)packet.Qpc100ns > lastQpc &&
-                (long)packet.Qpc100ns <= now100ns + 250_000 &&
-                now100ns - (long)packet.Qpc100ns <= 20_000_000 &&
-                packet.Position <= long.MaxValue && (long)packet.Position > lastPosition;
+            bool goodClock = now100ns > 0 && packet.Qpc100ns > lastQpc &&
+                packet.Qpc100ns <= (ulong)now100ns && (ulong)now100ns - packet.Qpc100ns <= maximumPacketAge100ns &&
+                packet.Position <= ulong.MaxValue - packet.Frames &&
+                (lastQpc == 0 || packet.Position == nextPosition);
             bool validFlags = (packet.Flags & ~((uint)TransportPacketFlags.Silent)) == 0;
             if (goodClock && validFlags && packet.Frames == expectedFrames && !cancellation.IsCancellationRequested)
             {
@@ -65,8 +71,8 @@ internal sealed class WasapiBusCaptureOwnerStep : IDisposable
                     accepted = adapter.TryOffer(endpoint, block, count, samples, flags);
                 if (accepted)
                 {
-                    lastQpc = (long)packet.Qpc100ns;
-                    lastPosition = (long)packet.Position;
+                    lastQpc = packet.Qpc100ns;
+                    nextPosition = packet.Position + packet.Frames;
                 }
             }
         }
@@ -74,11 +80,14 @@ internal sealed class WasapiBusCaptureOwnerStep : IDisposable
         {
             // ReleaseBuffer é obrigatório após GetBuffer bem-sucedido, inclusive
             // quando o conteúdo é inválido ou não será publicado no barramento.
-            releaseHresult = packets.ReleaseBuffer(packet.Frames);
-            if (releaseHresult != 0)
+            try { releaseHresult = packets.ReleaseBuffer(packet.Frames); }
+            finally
             {
-                retained = true;
-                adapter.FailClosed();
+                if (releaseHresult != 0)
+                {
+                    retained = true;
+                    adapter.FailClosed();
+                }
             }
         }
         if (releaseHresult != 0)
@@ -120,21 +129,31 @@ internal sealed class WasapiBusRenderOwnerStep : IDisposable
     private readonly uint frames;
     private readonly int bytesPerBlock;
     private bool disposed, retained;
+    internal PcmFloatFormat Format { get; }
 
     public bool ResourcesRetained => retained;
 
+    internal TransportEndpoint Endpoint { get; }
+    internal BoundedBusPcmTransport Bridge => adapter.Bridge;
+    internal bool IsAvailableOnOwner => !disposed && !retained && Environment.CurrentManagedThreadId == threadId;
+
     public WasapiBusRenderOwnerStep(IWasapiRenderPackets packets,
-        WasapiRenderBlockAdapter adapter, PcmFloatFormat format, WasapiPcm native)
+        WasapiRenderBlockAdapter adapter, TransportEndpoint endpoint, PcmFloatFormat format, WasapiPcm native)
     {
         RequireMta();
         this.packets = packets ?? throw new ArgumentNullException(nameof(packets));
         this.adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
         ArgumentNullException.ThrowIfNull(format);
         ArgumentNullException.ThrowIfNull(native);
+        endpoint.Validate();
+        if (endpoint.Direction != EndpointDirection.Playback)
+            throw new ArgumentException("O endpoint de render precisa ser de reprodução.", nameof(endpoint));
+        Endpoint = endpoint;
         native.Validate();
-        if (native.FloatFormat != format)
+        if (adapter.Format != format || native.FloatFormat != format)
             throw new NotSupportedException("O formato do owner render precisa coincidir com o barramento.");
         threadId = Environment.CurrentManagedThreadId;
+        Format = format;
         frames = (uint)(format.SampleRate / 100);
         bytesPerBlock = checked((int)frames * native.BlockAlign);
     }
@@ -145,7 +164,7 @@ internal sealed class WasapiBusRenderOwnerStep : IDisposable
         if (disposed || retained || cancellation.IsCancellationRequested || block < 0) return false;
         nint ptr = packets.GetBuffer(frames);
         bool valid = false;
-        int releaseHr;
+        int releaseHr = -1;
         try
         {
             if (ptr != 0 && !cancellation.IsCancellationRequested)
@@ -160,11 +179,14 @@ internal sealed class WasapiBusRenderOwnerStep : IDisposable
         {
             // Se a sessão foi invalidada, solta o pacote como silêncio, nunca
             // como conteúdo anterior da fila. O owner nativo não reusa buffer.
-            releaseHr = packets.ReleaseBuffer(frames, valid && !cancellation.IsCancellationRequested ? 0u : 2u);
-            if (releaseHr != 0)
+            try { releaseHr = packets.ReleaseBuffer(frames, valid && !cancellation.IsCancellationRequested ? 0u : 2u); }
+            finally
             {
-                retained = true;
-                adapter.FailClosed();
+                if (releaseHr != 0)
+                {
+                    retained = true;
+                    adapter.FailClosed();
+                }
             }
         }
         if (releaseHr != 0)
