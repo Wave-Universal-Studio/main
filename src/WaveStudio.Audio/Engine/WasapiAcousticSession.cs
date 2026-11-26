@@ -22,6 +22,7 @@ internal static class WasapiAcousticSession
     private const long Search100ns = 4_000_000;
     private const long Duration100ns = 24_000_000;
     private const uint Silent = 2;
+    private const int BufferEmpty = 0x08890001; // AUDCLNT_S_BUFFER_EMPTY
 
     public static async Task<WasapiAcousticReport> RunAsync(TransportRoute route, WasapiAudibleConsent consent,
         CancellationToken token)
@@ -33,12 +34,30 @@ internal static class WasapiAcousticSession
         consent.Consume(route);
         var deadline = CancellationTokenSource.CreateLinkedTokenSource(token, consent.StopToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(5));
-        var owner = Task.Run(() =>
+        var completed = new TaskCompletionSource<WasapiAcousticReport>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var owner = new Thread(() =>
         {
-            using (deadline)
-                return Run(route, deadline.Token);
-        });
-        try { return await owner.WaitAsync(TimeSpan.FromSeconds(7)).ConfigureAwait(false); }
+            bool park = false;
+            try
+            {
+                using (deadline)
+                    completed.TrySetResult(Run(route, deadline.Token, out park));
+            }
+            catch (Exception error) { completed.TrySetException(error); }
+            // Preserva a propriedade do COM retido e o apartamento inicializado, sem voltar a tocar nos streams.
+            if (park) Thread.Sleep(Timeout.Infinite);
+        }) { IsBackground = true, Name = "WaveStudio WASAPI acoustic owner" };
+        try
+        {
+            owner.SetApartmentState(ApartmentState.MTA);
+            owner.Start();
+        }
+        catch
+        {
+            deadline.Dispose();
+            throw;
+        }
+        try { return await completed.Task.WaitAsync(TimeSpan.FromSeconds(7)).ConfigureAwait(false); }
         catch (TimeoutException)
         {
             // Chamadas síncronas do driver não são interrompíveis. O owner preserva o COM e o guard.
@@ -46,12 +65,11 @@ internal static class WasapiAcousticSession
         }
     }
 
-    private static WasapiAcousticReport Run(TransportRoute route, CancellationToken token)
+    private static WasapiAcousticReport Run(TransportRoute route, CancellationToken token, out bool park)
     {
+        park = false;
         if (token.IsCancellationRequested)
             return new(false, 0, 0, 0, false, false, true, "Canceled", null, []);
-        var resources = new WasapiResourceScope(TransportActivityGuard.Shared.TryAcquire(AudioActivity.IsolatedTransport)
-            ?? throw new InvalidOperationException("Outra operação de áudio está ativa."));
         IWasapiStreamClient? capture = null, render = null;
         bool captureStart = false, renderStart = false, captureStop = false, renderStop = false;
         bool captureInFlight = false, renderInFlight = false, completed = false;
@@ -64,6 +82,8 @@ internal static class WasapiAcousticSession
         var input = route.Capture.Mix!;
         var output = route.Playback.Mix!;
         using var captured = new CaptureTimeline(input);
+        var resources = new WasapiResourceScope(TransportActivityGuard.Shared.TryAcquire(AudioActivity.IsolatedTransport)
+            ?? throw new InvalidOperationException("Outra operação de áudio está ativa."));
         try
         {
             var stimuli = Enumerable.Range(0, submitted.Length).Select(i => WasapiAcousticSignal.Create(output.SampleRate, i)).ToArray();
@@ -103,21 +123,26 @@ internal static class WasapiAcousticSession
                     if (next > captureSize) throw new InvalidOperationException("CapturePacketTooLarge");
                     var packet = read.GetBuffer();
                     long after = WasapiTime.Now100ns();
+                    if (packet.HResult == BufferEmpty)
+                    {
+                        if (packet.Frames != 0) throw new InvalidOperationException("CaptureEmptyBufferHasFrames");
+                        lastEmpty = before;
+                        break;
+                    }
                     WasapiCallException.RequireSuccess(packet.HResult, "Capture.GetBuffer");
-                    captureInFlight = packet.Frames > 0;
+                    captureInFlight = true;
+                    uint accepted = 0;
                     try
                     {
                         token.ThrowIfCancellationRequested();
                         if (packet.Frames != next) throw new InvalidOperationException("CapturePacketSizeChanged");
                         if (after - origin >= Startup100ns) captured.Add(packet, lastEmpty, after);
+                        accepted = packet.Frames;
                     }
                     finally
                     {
-                        if (captureInFlight)
-                        {
-                            WasapiCallException.RequireSuccess(read.ReleaseBuffer(packet.Frames), "Capture.ReleaseBuffer");
-                            captureInFlight = false;
-                        }
+                        WasapiCallException.RequireSuccess(read.ReleaseBuffer(accepted), "Capture.ReleaseBuffer");
+                        captureInFlight = false;
                     }
                 }
 
@@ -169,13 +194,17 @@ internal static class WasapiAcousticSession
         {
             renderStop = !renderStart || TryStop(render);
             captureStop = !captureStart || TryStop(capture);
-            if (captureInFlight || renderInFlight || !captureStop || !renderStop)
+            try
             {
-                failure ??= captureInFlight || renderInFlight ? "BufferReleaseUnconfirmed" : "StopUnconfirmed";
-                WasapiResourceScope.Retain(resources);
+                if (captureInFlight || renderInFlight || !captureStop || !renderStop)
+                {
+                    failure ??= captureInFlight || renderInFlight ? "BufferReleaseUnconfirmed" : "StopUnconfirmed";
+                    WasapiResourceScope.Retain(resources);
+                }
+                else
+                    resources.Dispose();
             }
-            else
-                resources.Dispose();
+            finally { park = !resources.Released; }
         }
 
         // O processamento do PCM acontece somente em memória. O relatório contém apenas métricas e estágios.

@@ -31,13 +31,22 @@ public sealed class WasapiNativeAcousticLatencyTests(ITestOutputHelper output)
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         var consent = WasapiAudibleConsent.Confirm(route, headsetConfirmed: true, lowLevelConfirmed: true, stop.Token);
+        var isolationReady = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var isolation = WatchIsolationAsync(route, stop, isolationReady);
         var watcher = WatchStopAsync(stop);
         WasapiAcousticReport result;
-        try { result = await WasapiAcousticSession.RunAsync(route, consent, token); }
+        (int Checks, string? Error) isolationDuring;
+        try
+        {
+            Assert.Null(await isolationReady.Task.WaitAsync(TimeSpan.FromSeconds(2), token));
+            result = await WasapiAcousticSession.RunAsync(route, consent, token);
+        }
         finally
         {
             await stop.CancelAsync();
             await watcher;
+            try { isolationDuring = await isolation.WaitAsync(TimeSpan.FromSeconds(1), token); }
+            catch (TimeoutException) { isolationDuring = (0, "IsolationWatchTimeout"); }
         }
 
         string? isolationAfterError = null;
@@ -55,6 +64,8 @@ public sealed class WasapiNativeAcousticLatencyTests(ITestOutputHelper output)
             CapturePeriodMs = route.Capture.DefaultPeriod100ns / 10_000d,
             RenderPeriodMs = route.Playback.DefaultPeriod100ns / 10_000d,
             StimulusPeakDbfs = 20 * Math.Log10(WasapiAcousticSignal.Peak),
+            IsolationChecks = isolationDuring.Checks,
+            IsolationDuringError = isolationDuring.Error,
             IsolationAfterError = isolationAfterError,
             Result = result
         }, new JsonSerializerOptions { WriteIndented = true });
@@ -65,6 +76,8 @@ public sealed class WasapiNativeAcousticLatencyTests(ITestOutputHelper output)
         Console.WriteLine($"Relatório numérico: {file}");
         output.WriteLine(report);
 
+        Assert.Null(isolationDuring.Error);
+        Assert.True(isolationDuring.Checks >= 2, "Falta uma amostra de isolamento durante a janela.");
         Assert.Null(isolationAfterError);
         Assert.True(result.Measured, $"Medição indisponível. Estágio: {result.Failure}; evidência: {file}");
     }
@@ -77,19 +90,67 @@ public sealed class WasapiNativeAcousticLatencyTests(ITestOutputHelper output)
             {
                 token.ThrowIfCancellationRequested();
                 using var device = enumerator.GetDevice(info.Endpoint.Id);
-                Assert.Equal(DeviceState.Active, device.State);
+                RequireEndpoint(device, info.Endpoint);
                 var adapter = NativeSingleCableIdentity.Read(enumerator, device).RequireRole(expectsCable: false);
                 Assert.Equal("USB", NativeSingleCableIdentity.ReadEnumerator(adapter), ignoreCase: true);
-                using var volume = device.AudioEndpointVolume;
-                Assert.False(volume.Mute, "Os endpoints da prova precisam estar desmutados.");
-                var sessions = device.AudioSessionManager.Sessions;
-                for (int i = 0; i < sessions.Count; i++)
-                {
-                    using var session = sessions[i];
-                    Assert.Contains((SessionActivity)(int)session.State, new[] { SessionActivity.Inactive, SessionActivity.Expired });
-                }
+                RequireQuiet(device);
             }
         }, token);
+
+    private static Task<(int Checks, string? Error)> WatchIsolationAsync(TransportRoute route, CancellationTokenSource stop,
+        TaskCompletionSource<string?> ready) => Task.Run(() =>
+    {
+        int checks = 0;
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            using var capture = enumerator.GetDevice(route.Capture.Endpoint.Id);
+            using var render = enumerator.GetDevice(route.Playback.Endpoint.Id);
+            var stopSignal = stop.Token.WaitHandle;
+            while (!stop.IsCancellationRequested)
+            {
+                RequireEndpoint(capture, route.Capture.Endpoint);
+                RequireEndpoint(render, route.Playback.Endpoint);
+                // As consultas COM e a enumeração de sessões ficam na thread auxiliar, fora do transporte de PCM.
+                RequireQuiet(capture, (uint)Environment.ProcessId);
+                RequireQuiet(render, (uint)Environment.ProcessId);
+                checks++;
+                ready.TrySetResult(null);
+                stopSignal.WaitOne(250);
+            }
+            return (checks, (string?)null);
+        }
+        catch (Exception error) when (error is Xunit.Sdk.XunitException || AudioError.IsDeviceAccessError(error))
+        {
+            ready.TrySetResult(error.GetType().Name);
+            stop.Cancel();
+            return (checks, error.GetType().Name);
+        }
+        finally { ready.TrySetResult("IsolationWatchStopped"); }
+    }, CancellationToken.None);
+
+    private static void RequireEndpoint(MMDevice device, TransportEndpoint endpoint)
+    {
+        Assert.Equal(endpoint.Id, device.ID);
+        Assert.Equal(DeviceState.Active, device.State);
+        Assert.Equal(endpoint.Direction == EndpointDirection.Capture ? DataFlow.Capture : DataFlow.Render, device.DataFlow);
+    }
+
+    private static void RequireQuiet(MMDevice device, uint? ownerPid = null)
+    {
+        Assert.False(device.AudioEndpointVolume.Mute, "Os endpoints da prova precisam estar desmutados.");
+        var manager = device.AudioSessionManager;
+        if (ownerPid.HasValue) manager.RefreshSessions();
+        var sessions = manager.Sessions;
+        for (int i = 0, count = sessions.Count; i < count; i++)
+        {
+            using var session = sessions[i];
+            var state = (SessionActivity)(int)session.State;
+            if (state is SessionActivity.Inactive or SessionActivity.Expired) continue;
+            Assert.True(state == SessionActivity.Active && ownerPid.HasValue && !session.IsSystemSoundsSession &&
+                session.GetProcessID == ownerPid.Value, "Sessão concorrente detectada no endpoint da prova.");
+        }
+    }
 
     private static async Task WatchStopAsync(CancellationTokenSource stop)
     {
