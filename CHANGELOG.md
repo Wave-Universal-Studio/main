@@ -2,6 +2,12 @@
 
 ## Em desenvolvimento
 
+### 2026-11-26 — F5-I2C3-CLOCK-ADMISSION-AND-RECOVERY
+
+- Admissão por clocks independentes, com aquecimento sem buffers, validação nominal acumulada e janela comum para os pacotes de captura.
+- Vínculos confirmados entre owner, endpoint, formato, ponte e geração. Falha invalida a entrega. `ReleaseBuffer` sem confirmação mantém a quarentena.
+- Testes com leituras injetadas. O controle de sessões do mixer foi verificado separadamente com duas sessões reais do Windows em silêncio.
+
 ### 2026-11-24 — validação integrada local
 
 - Registrados os resultados Release no Windows 10 x64, a estabilidade dos medidores em leitura e a prontidão atual do VB-CABLE simples após boot completo. A matriz registra separadamente as evidências anteriores e o que falta para aceitação física.

@@ -99,7 +99,7 @@ public sealed class WasapiBusPacketOwnerStepsTests
             using var bridge = new BoundedBusPcmTransport(1, Mono, [game]);
             using var render = new WasapiRenderBlockAdapter(bridge, Mono, Pcm16());
             var packets = new RenderPackets();
-            using var owner = new WasapiBusRenderOwnerStep(packets, render, Mono, Pcm16());
+            using var owner = new WasapiBusRenderOwnerStep(packets, render, new("out", EndpointDirection.Playback, 1), Mono, Pcm16());
             Assert.False(owner.TryRender(MixBus.Personal, 0, TestContext.Current.CancellationToken));
             Assert.Equal(2u, packets.ReleaseFlags);
             Assert.Equal(1, packets.Releases);
@@ -116,7 +116,7 @@ public sealed class WasapiBusPacketOwnerStepsTests
             using var bridge = new BoundedBusPcmTransport(1, Mono, [game]);
             using var render = new WasapiRenderBlockAdapter(bridge, Mono, Pcm16());
             var packets = new RenderPackets();
-            using var owner = new WasapiBusRenderOwnerStep(packets, render, Mono, Pcm16());
+            using var owner = new WasapiBusRenderOwnerStep(packets, render, new("out", EndpointDirection.Playback, 1), Mono, Pcm16());
             var mix = new BusMixSession(bridge);
             mix.Start(1, Mono, [game]);
             float[] input = new float[480];
@@ -139,7 +139,7 @@ public sealed class WasapiBusPacketOwnerStepsTests
             using var bridge = new BoundedBusPcmTransport(1, Mono, [game]);
             using var render = new WasapiRenderBlockAdapter(bridge, Mono, Pcm16());
             var packets = new RenderPackets { ReleaseResult = unchecked((int)0x88890004) };
-            var owner = new WasapiBusRenderOwnerStep(packets, render, Mono, Pcm16());
+            var owner = new WasapiBusRenderOwnerStep(packets, render, new("out", EndpointDirection.Playback, 1), Mono, Pcm16());
             Assert.Throws<WasapiCallException>(() => owner.TryRender(MixBus.Personal, 0, TestContext.Current.CancellationToken));
             Assert.True(owner.ResourcesRetained);
             Assert.False(bridge.TryOfferCapture(game.Endpoint, 0, new float[480]));
@@ -158,7 +158,7 @@ public sealed class WasapiBusPacketOwnerStepsTests
             using var bridge = new BoundedBusPcmTransport(1, Mono, [game]);
             using var render = new WasapiRenderBlockAdapter(bridge, Mono, Pcm16());
             var packets = new RenderPackets();
-            using var owner = new WasapiBusRenderOwnerStep(packets, render, Mono, Pcm16());
+            using var owner = new WasapiBusRenderOwnerStep(packets, render, new("out", EndpointDirection.Playback, 1), Mono, Pcm16());
             using var canceled = new CancellationTokenSource();
             canceled.Cancel();
             Assert.False(owner.TryRender(MixBus.Personal, 0, canceled.Token));

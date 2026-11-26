@@ -1,6 +1,12 @@
 # Status do Wave Studio
 
-Atualizado em 24/11/2026.
+Atualizado em 26/11/2026.
+
+## F5-I2C3 — admissão de clock e recuperação
+
+O scheduler MTA exige um corte por geração e por endpoint, confirma progresso e taxa nominal acumulada, recusa timestamps ausentes, futuros, antigos ou desalinhados e só publica PCM de captura dentro da janela comum. O Stop invalida a ponte. Um novo ciclo exige geração superior e novas âncoras. A liberação incerta mantém o owner e o guard retidos. O escopo permanece injetado. O desenvolvimento segue a F5-I2C3 sem iniciar streams contínuos em hardware.
+
+A retomada física confirmou controle do mixer em duas sessões reais no Windows, com silêncio digital, restauração e encerramento. Uma captura concorrente ainda impediu a coleta do FIFINE. [Resultados e próximos atos físicos](docs/PHYSICAL_VALIDATION.md#retomada-em-26112026).
 
 ## Validação integrada local — 24/11/2026
 

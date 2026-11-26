@@ -9,11 +9,27 @@ internal sealed class TransportActivityGuard
 {
     public static TransportActivityGuard Shared { get; } = new();
     private int owner;
+    private long lastOwnedBusGeneration;
     public IDisposable? TryAcquire(AudioActivity activity)
     {
         if (activity is not (AudioActivity.ShortDiagnostic or AudioActivity.IsolatedTransport or AudioActivity.NativePreparation)) throw new ArgumentOutOfRangeException(nameof(activity));
         return Interlocked.CompareExchange(ref owner, (int)activity, 0) == 0 ? new Lease(this) : null;
     }
+    // O lease exclusivo também serializa a validação da geração, fora dos passos de áudio.
+    public IDisposable? TryAcquireOwnedBus(long generation)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(generation);
+        var lease = TryAcquire(AudioActivity.IsolatedTransport);
+        if (lease is null) return null;
+        if (generation <= lastOwnedBusGeneration)
+        {
+            lease.Dispose();
+            return null;
+        }
+        lastOwnedBusGeneration = generation;
+        return lease;
+    }
+
     private sealed class Lease(TransportActivityGuard guard) : IDisposable
     {
         private TransportActivityGuard? current = guard;

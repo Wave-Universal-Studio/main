@@ -105,7 +105,7 @@ internal sealed class WasapiClockAdapter
                 return Reject(NativeClockResult.InvalidPosition, NativeClockReason.IntervalTooLong, ref validation);
             double expected = rate * seconds;
             double error = Math.Abs((double)advance - expected);
-            double limit = expected * .005 + 2;
+            double limit = NominalFrameTolerance(expected);
             validation.ExpectedFrames = expected;
             validation.AbsoluteErrorFrames = error;
             validation.ErrorLimitFrames = limit;
@@ -144,6 +144,8 @@ internal sealed class WasapiClockAdapter
         RequiresReset = true;
         return result;
     }
+
+    internal static double NominalFrameTolerance(double expectedFrames) => expectedFrames * .005 + 2;
 
     internal static long? SampleAge(ulong timestamp, long now100ns) =>
         now100ns >= 0 && timestamp <= long.MaxValue ? now100ns - (long)timestamp : null;

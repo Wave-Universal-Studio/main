@@ -58,6 +58,18 @@ internal sealed class BoundedBusPcmTransport : IBusPcmTransport, IDisposable
         external = externalDestination is null ? null : new(outputSamples, capacityBlocks);
     }
 
+    // A validação de vínculo ocorre uma vez, antes de adquirir os owners.
+    internal bool MatchesOwnedBus(long epoch, PcmFloatFormat format, ReadOnlySpan<MixSource> configured)
+    {
+        if (Volatile.Read(ref closed) != 0 || generation != epoch || outputFormat != format ||
+            destination is not null || configured.Length != sources.Length) return false;
+        foreach (var entry in sources)
+        {
+            if (!configured.Contains(entry.Definition)) return false;
+        }
+        return true;
+    }
+
     // Cada fonte deve ter exatamente um produtor. Recusamos blocos repetidos, antigos, fora
     // de formato e sobrecarga; nunca substituímos dados ainda não consumidos.
     public bool TryOfferCapture(TransportEndpoint endpoint, long block, ReadOnlySpan<float> pcm)
