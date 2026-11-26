@@ -173,6 +173,68 @@ public sealed class OwnedWasapiBusSessionTests
         Assert.Equal(4, rig.Calls.Count(x => x.EndsWith(":stop")));
     }
 
+    [Theory]
+    [InlineData("clock")]
+    [InlineData("capture")]
+    [InlineData("render")]
+    [InlineData("render-release-fails")]
+    public async Task DeadlineCrossedInsideNativeCallDoesNotSubmitLatePcm(string boundary)
+    {
+        TimeSpan duration = TimeSpan.FromSeconds(1);
+        bool delayed = false;
+        void CrossDeadline()
+        {
+            delayed = true;
+            Thread.Sleep(duration + TimeSpan.FromMilliseconds(50));
+        }
+
+        var rig = new Rig
+        {
+            OnClockRead = (id, cut) => { if (boundary == "clock" && id == "personal" && cut == 2) CrossDeadline(); },
+            OnCaptureAcquire = id => { if (boundary == "capture" && id == "mic") CrossDeadline(); },
+            OnRenderAcquire = (id, frames) =>
+            {
+                if (boundary.StartsWith("render", StringComparison.Ordinal) && id == "stream" && frames == 480)
+                    CrossDeadline();
+            },
+            OnRelease = (id, _) => delayed && id == "stream" && boundary == "render-release-fails" ? Failure : 0
+        };
+
+        var result = await Run(rig, 1, TestContext.Current.CancellationToken, duration);
+
+        Assert.True(delayed);
+        Assert.Equal(0, result.BlocksProcessed);
+        Assert.Equal(4, rig.Calls.Count(x => x.EndsWith(":stop")));
+        if (boundary.StartsWith("render", StringComparison.Ordinal))
+        {
+            Assert.Equal([4096], rig.OutputSamples);
+            Assert.Contains("stream:release-buffer:480:2", rig.Calls);
+            Assert.DoesNotContain("stream:release-buffer:480:0", rig.Calls);
+        }
+        else
+        {
+            Assert.Empty(rig.OutputSamples);
+            Assert.DoesNotContain(rig.Calls, x => x.EndsWith(":get-buffer:480"));
+            if (boundary == "clock") Assert.Equal(1, rig.Calls.Count(x => x == "stream:clock-read"));
+            if (boundary == "capture") Assert.Contains("mic:capture-release:480", rig.Calls);
+        }
+
+        if (boundary == "render-release-fails")
+        {
+            Assert.True(result.ResourcesRetained);
+            Assert.False(result.DurationReached);
+            Assert.Equal("IAudioRenderClient.ReleaseBuffer", Assert.IsType<WasapiCallException>(result.Failure).Stage);
+            Assert.DoesNotContain("stream:dispose-packets", rig.Calls);
+            Assert.Null(rig.Guard.TryAcquire(AudioActivity.ShortDiagnostic));
+        }
+        else
+        {
+            Assert.False(result.ResourcesRetained);
+            Assert.True(result.DurationReached);
+            Assert.Null(result.Failure);
+        }
+    }
+
     private static Task<OwnedWasapiBusResult> Run(Rig rig, long generation, CancellationToken token, TimeSpan? duration = null)
     {
         MixSource Source(string id) => new(new(id, EndpointDirection.Capture, generation), Format,
@@ -197,6 +259,9 @@ public sealed class OwnedWasapiBusSessionTests
         internal bool DivergentFormat { get; set; }
         internal int CaptureFailure { get; init; }
         internal Func<string, int> OnRevalidate { get; init; } = _ => 0;
+        internal Action<string, int> OnClockRead { get; init; } = (_, _) => { };
+        internal Action<string> OnCaptureAcquire { get; init; } = _ => { };
+        internal Action<string, uint> OnRenderAcquire { get; init; } = (_, _) => { };
         internal Func<string, int> OnStart { get; init; } = _ => 0;
         internal Func<string, int> OnStop { get; init; } = _ => 0;
         internal Func<string, uint, int> OnRelease { get; init; } = (_, _) => 0;
@@ -273,6 +338,7 @@ public sealed class OwnedWasapiBusSessionTests
         {
             rig.Record(id + ":clock-read");
             if (id == "game") rig.ClockGroup++;
+            rig.OnClockRead(id, rig.ClockGroup);
             return new(0, 48000, 0, (ulong)(1000 + rig.ClockGroup * 480), (ulong)(rig.ReadReference() - 1));
         }
         public void Dispose() => rig.Record(id + ":dispose-clock");
@@ -289,6 +355,7 @@ public sealed class OwnedWasapiBusSessionTests
         }
         public WasapiCaptureBuffer GetBuffer()
         {
+            rig.OnCaptureAcquire(id);
             pointer = Marshal.AllocHGlobal(960);
             for (int offset = 0; offset < 960; offset += 2) Marshal.WriteInt16(pointer, offset, (short)rig.Sample);
             supplied = true;
@@ -296,6 +363,7 @@ public sealed class OwnedWasapiBusSessionTests
         }
         public int ReleaseBuffer(uint framesRead)
         {
+            rig.Record(id + $":capture-release:{framesRead}");
             Marshal.FreeHGlobal(pointer);
             pointer = 0;
             return 0;
@@ -309,6 +377,7 @@ public sealed class OwnedWasapiBusSessionTests
         public nint GetBuffer(uint frames)
         {
             rig.Record(id + ":get-buffer:" + frames);
+            rig.OnRenderAcquire(id, frames);
             return pointer = Marshal.AllocHGlobal(checked((int)frames * 2));
         }
         public int ReleaseBuffer(uint framesWritten, uint flags)

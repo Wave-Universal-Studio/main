@@ -126,7 +126,7 @@ internal sealed partial class OwnedBusScheduler : IDisposable
 
     // O corte segue a ordem dos slots de captura e depois dos de render.
     // A primeira leitura válida só estabelece as âncoras, sem adquirir buffers.
-    public bool Tick(long block)
+    public bool Tick(long block, OwnedBusDeliveryDeadline? deadline = null)
     {
         CheckOwner();
         if (stopped) return false;
@@ -139,10 +139,18 @@ internal sealed partial class OwnedBusScheduler : IDisposable
         try
         {
             int index = 0;
-            foreach (var source in captures) nativeCut[index++] = source.Owner.ReadNativeClock();
-            foreach (var output in renders) nativeCut[index++] = output.Owner.ReadNativeClock();
+            foreach (var source in captures)
+            {
+                if (StopIfExpired(deadline)) return false;
+                nativeCut[index++] = source.Owner.ReadNativeClock();
+            }
+            foreach (var output in renders)
+            {
+                if (StopIfExpired(deadline)) return false;
+                nativeCut[index++] = output.Owner.ReadNativeClock();
+            }
             // O tempo de referência é colhido depois de todos os GetPosition.
-            return Advance(block, readReferenceTime(), nativeCut);
+            return !StopIfExpired(deadline) && Advance(block, readReferenceTime(), nativeCut, deadline);
         }
         catch
         {
@@ -159,14 +167,21 @@ internal sealed partial class OwnedBusScheduler : IDisposable
             EndTicking();
             return false;
         }
-        return Advance(block, now100ns, samples);
+        return Advance(block, now100ns, samples, null);
+    }
+
+    private bool StopIfExpired(OwnedBusDeliveryDeadline? deadline)
+    {
+        if (deadline?.HasExpired() != true) return false;
+        EndTicking();
+        return true;
     }
 
     private bool NextBlock(long block) => block >= 0 && (lastBlock < 0 || block == lastBlock + 1);
 
-    private bool Advance(long block, long now100ns, ReadOnlySpan<NativeClockSample> samples)
+    private bool Advance(long block, long now100ns, ReadOnlySpan<NativeClockSample> samples, OwnedBusDeliveryDeadline? deadline)
     {
-        if (stopped) return false;
+        if (stopped || StopIfExpired(deadline)) return false;
         if (cancellation.IsCancellationRequested || !NextBlock(block) || now100ns <= 0 ||
             (lastBlock >= 0 && (now100ns <= lastTime || now100ns - lastTime > OwnedBusClockAdmission.MaximumGap100ns)))
         {
@@ -191,12 +206,13 @@ internal sealed partial class OwnedBusScheduler : IDisposable
         try
         {
             foreach (var source in captures)
-                if (!source.Owner.TryCapture(block, now100ns, cancellation, OwnedBusClockAdmission.Block100ns))
+                if (!source.Owner.TryCapture(block, now100ns, cancellation, OwnedBusClockAdmission.Block100ns, deadline))
                 {
                     EndTicking();
                     return false;
                 }
 
+            if (StopIfExpired(deadline)) return false;
             if (!mixer.Process(generation, block))
             {
                 EndTicking();
@@ -210,7 +226,7 @@ internal sealed partial class OwnedBusScheduler : IDisposable
                 bridge.TryReadOutput(MixBus.Stream, block, discard, out _);
 
             foreach (var output in renders)
-                if (!output.Owner.TryRender(output.Bus, block, cancellation))
+                if (!output.Owner.TryRender(output.Bus, block, cancellation, deadline))
                 {
                     EndTicking();
                     return false;

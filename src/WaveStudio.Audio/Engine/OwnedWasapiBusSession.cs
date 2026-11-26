@@ -9,6 +9,20 @@ internal sealed record OwnedWasapiBusResult(long Generation, int OwnerThreadId, 
     bool DurationReached, bool Canceled, bool ResourcesRetained, Exception? Failure,
     IReadOnlyList<Exception> CleanupFailures, OwnedBusClockFailure ClockFailure, NativeClockReason NativeClockFailure);
 
+// Somente a MTA consulta e registra o prazo de uma geração já iniciada.
+internal sealed class OwnedBusDeliveryDeadline(TimeSpan duration)
+{
+    private readonly long started = Stopwatch.GetTimestamp();
+    public TimeSpan Remaining => duration - Stopwatch.GetElapsedTime(started);
+    public bool Reached { get; private set; }
+
+    public bool HasExpired()
+    {
+        if (Remaining <= TimeSpan.Zero) Reached = true;
+        return Reached;
+    }
+}
+
 // Entrada explícita para uma geração. A MTA conserva todos os recursos WASAPI desde a preparação até a parada.
 internal static class OwnedWasapiBusSession
 {
@@ -102,12 +116,12 @@ internal static class OwnedWasapiBusSession
             foreach (var stream in startOrder) stream.Revalidate(cancellation);
             foreach (var stream in startOrder) stream.Start(cancellation);
 
-            var clock = Stopwatch.StartNew();
+            var deadline = new OwnedBusDeliveryDeadline(maximumDuration);
             long nextBlock = 0;
             while (true)
             {
                 cancellation.ThrowIfCancellationRequested();
-                TimeSpan remaining = maximumDuration - clock.Elapsed;
+                TimeSpan remaining = deadline.Remaining;
                 if (remaining <= TimeSpan.Zero) break;
 
                 // O trecho final de duração inferior a um bloco só espera. O arredondamento evita uma espera de zero milissegundos.
@@ -115,12 +129,13 @@ internal static class OwnedWasapiBusSession
                 int waitMilliseconds = finalWait ? (int)Math.Ceiling(remaining.TotalMilliseconds) : BusMixSession.BlockMilliseconds;
                 stopSignal.WaitOne(waitMilliseconds);
                 cancellation.ThrowIfCancellationRequested();
-                if (finalWait || clock.Elapsed >= maximumDuration) continue;
+                if (finalWait || deadline.HasExpired()) continue;
 
                 // Um passo por espera. Se o owner atrasar, não tenta recuperar o atraso em rajada.
-                if (!scheduler.Tick(nextBlock++))
+                if (!scheduler.Tick(nextBlock++, deadline))
                 {
                     cancellation.ThrowIfCancellationRequested();
+                    if (deadline.Reached) break;
                     throw new InvalidOperationException("O scheduler recusou o bloco WASAPI da geração ativa.");
                 }
                 if (scheduler.ClockAdmitted) processed++;
