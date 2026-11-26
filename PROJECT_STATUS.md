@@ -2,9 +2,9 @@
 
 Atualizado em 26/11/2026.
 
-## F5-I2C3 — admissão de clock e recuperação
+## Implementado — F5-I2C3, 26/11/2026
 
-O scheduler MTA exige um corte por geração e por endpoint, confirma progresso e taxa nominal acumulada, recusa timestamps ausentes, futuros, antigos ou desalinhados e só publica PCM de captura dentro da janela comum. O Stop invalida a ponte. Um novo ciclo exige geração superior e novas âncoras. A liberação incerta mantém o owner e o guard retidos. O escopo permanece injetado. O desenvolvimento segue a F5-I2C3 sem iniciar streams contínuos em hardware.
+O scheduler MTA exige um corte por geração e por endpoint, confirma progresso e taxa nominal acumulada, recusa timestamps ausentes, futuros, antigos ou desalinhados e só publica PCM de captura dentro da janela comum. O Stop invalida a ponte. Um novo ciclo exige geração superior e novas âncoras. A liberação incerta mantém o owner e o guard retidos. O escopo permanece injetado. A [PR #18](https://github.com/Wave-Universal-Studio/main/pull/18) foi integrada em `4f7e4be`. O [CI Windows x64](https://github.com/Wave-Universal-Studio/main/actions/runs/45896014713) confirmou 979 testes aprovados em Debug e 979 em Release, zero falhas, sete Explicit excluídos por configuração e builds sem avisos ou erros.
 
 A retomada física confirmou controle do mixer em duas sessões reais no Windows, com silêncio digital, restauração e encerramento. Uma captura concorrente ainda impediu a coleta do FIFINE. [Resultados e próximos atos físicos](docs/PHYSICAL_VALIDATION.md#retomada-em-26112026).
 

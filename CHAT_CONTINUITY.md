@@ -4,7 +4,11 @@
 
 Criado em 18/11/2026 na transição do WaveStudio P1. O histórico integral de chats pode não estar acessível. Não presumir leitura completa. As decisões e evidências versionadas são a memória operacional do projeto. Esta fotografia inicial é histórica; sempre consultar o HEAD atual antes de trabalhar.
 
-## Estado de retomada mais recente — 24/11/2026 (F5-I2C2 integrada)
+## Estado de retomada mais recente — 26/11/2026 (F5-I2C3 integrada)
+
+A [PR #18](https://github.com/Wave-Universal-Studio/main/pull/18) integrou a admissão de clocks independentes e a invalidação por geração em `4f7e4be`. [CI Windows x64](https://github.com/Wave-Universal-Studio/main/actions/runs/45896014713) com 979 casos comuns aprovados em Debug e 979 em Release, zero falhas e sete Explicit excluídos por configuração. O scheduler recebe clocks injetados. A ligação dos clocks nativos e a aceitação das rotas físicas continuam abertas. O mixer foi conferido com duas sessões WASAPI reais em silêncio, restauração e encerramento. [Validação física](docs/PHYSICAL_VALIDATION.md#retomada-em-26112026).
+
+## Retomada anterior — 24/11/2026 (F5-I2C2 integrada)
 
 **Main F5-I2C2 funcional `3b2c0a55e1026942868c5b659a67b8dc9369109c`** (docs podem avançar após). PR #14 scheduler `OwnedBusScheduler` coordena passos de owners WASAPI já abertos, PCM interno Personal/Stream, filas/tickets e saída explicitamente vinculada em MTA com relógio 10 ms injetado; sem uso contínuo real em hardware. [GitHub Actions Windows x64](https://github.com/Wave-Universal-Studio/main/actions/runs/45340451874) **959 testes comuns aprovados Debug, 959 Release, 0 falhas, 7 Explicit excluídos/configuração, builds limpos**. F5-I1 BusMixSession, F5-I2A ponte SPSC, F5-I2B codecs PCM, F5-I2C1 owners MTA e F5-I2C2 scheduler já integrados. O README público COMPLETO com logo e resumo de três linhas nunca deve ser substituído.
 

@@ -1,5 +1,11 @@
 # Wave Studio — próxima entrega
 
+**Checkpoint de 26/11/2026.** A F5-I2C3 abaixo foi integrada em `4f7e4be` pela [PR #18](https://github.com/Wave-Universal-Studio/main/pull/18). A nova referência é de **979 testes comuns por configuração**, com sete provas Explicit excluídas. [CI Windows x64](https://github.com/Wave-Universal-Studio/main/actions/runs/45896014713).
+
+O próximo ponto de integração é coletar as leituras dos clocks nos owners WASAPI já preparados e ligá-las ao corte QPC do scheduler. A fronteira atual ainda exige confirmação nativa do ciclo de vida e da recuperação. As provas físicas em aberto seguem no [relatório de aceitação](docs/PHYSICAL_VALIDATION.md).
+
+## Escopo entregue na F5-I2C3
+
 **F5-I2C3-CLOCK-ADMISSION-AND-RECOVERY — admissão temporal e recuperação dos owners de áudio.**
 
 **Base aprovada:** F5-I2C2 integrada via PR #14 no commit `3b2c0a55e1026942868c5b659a67b8dc9369109c`. [CI Windows x64](https://github.com/Wave-Universal-Studio/main/actions/runs/45340451874): **959 testes comuns Debug/959 Release**, zero falhas, 7 Explicit excluídos por configuração, builds sem avisos. Todos os incrementos F5-I1 até F5-I2C2 estão na main. Esforço EXTRA ALTO. Autorização para código/PR/merge rotineiros com segurança e CI verde, sem despesas ou alterações físicas do Windows.
