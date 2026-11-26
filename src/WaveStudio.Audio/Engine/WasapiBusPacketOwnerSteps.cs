@@ -74,11 +74,13 @@ internal sealed class WasapiBusCaptureOwnerStep : IWasapiBusOwner
     // A posição do pacote está em frames de captura, separada das unidades do clock do cliente.
     // A continuidade é exigida antes de publicar o bloco para a ponte PCM.
     public unsafe bool TryCapture(long block, long now100ns, CancellationToken cancellation = default,
-        ulong maximumPacketAge100ns = (ulong)OwnedBusClockAdmission.MaximumGap100ns)
+        ulong maximumPacketAge100ns = (ulong)OwnedBusClockAdmission.MaximumGap100ns, OwnedBusDeliveryDeadline? deadline = null)
     {
         CheckOwner();
-        if (disposed || retained || cancellation.IsCancellationRequested || block < 0) return false;
-        if (packets.NextPacketSize() == 0) return false;
+        if (disposed || retained || cancellation.IsCancellationRequested || block < 0 || deadline?.HasExpired() == true)
+            return false;
+        uint nextPacketSize = packets.NextPacketSize();
+        if (deadline?.HasExpired() == true || cancellation.IsCancellationRequested || nextPacketSize == 0) return false;
         var packet = packets.GetBuffer();
         if (packet.HResult != 0) throw new WasapiCallException("IAudioCaptureClient.GetBuffer", packet.HResult);
 
@@ -91,7 +93,8 @@ internal sealed class WasapiBusCaptureOwnerStep : IWasapiBusOwner
                 packet.Position <= ulong.MaxValue - packet.Frames &&
                 (lastQpc == 0 || packet.Position == nextPosition);
             bool validFlags = (packet.Flags & ~((uint)TransportPacketFlags.Silent)) == 0;
-            if (goodClock && validFlags && packet.Frames == expectedFrames && !cancellation.IsCancellationRequested)
+            if (deadline?.HasExpired() != true && goodClock && validFlags &&
+                packet.Frames == expectedFrames && !cancellation.IsCancellationRequested)
             {
                 int count = checked((int)packet.Frames);
                 var flags = (TransportPacketFlags)packet.Flags;
@@ -124,7 +127,7 @@ internal sealed class WasapiBusCaptureOwnerStep : IWasapiBusOwner
         }
         if (releaseHresult != 0)
             throw new WasapiCallException("IAudioCaptureClient.ReleaseBuffer", releaseHresult);
-        return accepted && !disposed && !cancellation.IsCancellationRequested;
+        return accepted && !disposed && !cancellation.IsCancellationRequested && deadline?.HasExpired() != true;
     }
 
     public void Dispose()
@@ -240,16 +243,26 @@ internal sealed class WasapiBusRenderOwnerStep : IWasapiBusOwner
         return nativeBinding.ReadClock();
     }
 
-    public unsafe bool TryRender(MixBus bus, long block, CancellationToken cancellation = default)
+    internal void PrimeSilence(uint capacity)
     {
         CheckOwner();
-        if (disposed || retained || cancellation.IsCancellationRequested || block < 0) return false;
+        if (!IsAvailableOnOwner || nativeBinding is null || capacity < frames)
+            throw new InvalidOperationException("Render indisponível para preenchimento inicial.");
+        _ = packets.GetBuffer(capacity);
+        ReleaseRenderBuffer(capacity, (uint)TransportPacketFlags.Silent);
+    }
+
+    public unsafe bool TryRender(MixBus bus, long block, CancellationToken cancellation = default,
+        OwnedBusDeliveryDeadline? deadline = null)
+    {
+        CheckOwner();
+        if (disposed || retained || cancellation.IsCancellationRequested || block < 0 || deadline?.HasExpired() == true)
+            return false;
         nint ptr = packets.GetBuffer(frames);
-        bool valid = false;
-        int releaseHr = -1;
+        bool valid = false, deliver = false;
         try
         {
-            if (ptr != 0 && !cancellation.IsCancellationRequested)
+            if (ptr != 0 && !cancellation.IsCancellationRequested && deadline?.HasExpired() != true)
             {
                 Span<byte> bytes = new((void*)ptr, bytesPerBlock);
                 valid = adapter.TryEncode(bus, block, bytes, out MixDeliveryTicket? ticket) &&
@@ -259,21 +272,27 @@ internal sealed class WasapiBusRenderOwnerStep : IWasapiBusOwner
         }
         finally
         {
-            // Se a sessão foi invalidada, solta o pacote como silêncio, nunca
-            // como conteúdo anterior da fila. O owner nativo não reusa buffer.
-            try { releaseHr = packets.ReleaseBuffer(frames, valid && !cancellation.IsCancellationRequested ? 0u : 2u); }
-            finally
+            // Confere o prazo e o cancelamento na entrega. Um buffer já adquirido é devolvido, como silêncio se necessário.
+            bool deliveryAllowed = deadline?.HasExpired() != true && !cancellation.IsCancellationRequested;
+            deliver = valid && deliveryAllowed;
+            ReleaseRenderBuffer(frames, deliver ? 0u : (uint)TransportPacketFlags.Silent);
+        }
+        return deliver && !disposed && !cancellation.IsCancellationRequested && deadline?.HasExpired() != true;
+    }
+
+    private void ReleaseRenderBuffer(uint count, uint flags)
+    {
+        int hr = -1;
+        try { hr = packets.ReleaseBuffer(count, flags); }
+        finally
+        {
+            if (hr != 0)
             {
-                if (releaseHr != 0)
-                {
-                    retained = true;
-                    adapter.FailClosed();
-                }
+                retained = true;
+                adapter.FailClosed();
             }
         }
-        if (releaseHr != 0)
-            throw new WasapiCallException("IAudioRenderClient.ReleaseBuffer", releaseHr);
-        return valid && !disposed && !cancellation.IsCancellationRequested;
+        WasapiCallException.RequireSuccess(hr, "IAudioRenderClient.ReleaseBuffer");
     }
 
     public void Dispose()

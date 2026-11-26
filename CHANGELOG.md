@@ -2,6 +2,16 @@
 
 ## Em desenvolvimento
 
+### 2026-11-26 — ciclo de vida WASAPI e novas medições físicas
+
+- Uma MTA própria prepara cada geração de barramentos, preenche os renders com silêncio, inicia destinos antes das fontes e invalida o PCM antes do Stop. A recuperação explícita recria a geração somente após liberação confirmada.
+- O diagnóstico nominal SILENT coleta por até 120 s, separa evidência de drift e transporte e registra o primeiro pacote rejeitado sem publicar PCM.
+- A prova acústica mede do envio de um sinal sintético ao WASAPI até a chegada ao microfone e até a leitura pelo aplicativo, com intervalos de QPC e correlação em memória.
+
+### 2026-11-26 — fonte original desativada na prova externa
+
+- O snapshot do cabo simples distingue fonte do OBS desativada, padrão do Windows e endpoint explícito. O microfone do OBS pode permanecer desativado até o fim da sondagem de quietude e voltar a esse estado na restauração.
+
 ### 2026-11-26 — F5-I2C4, clocks dos owners WASAPI
 
 - O scheduler lê o clock de cada cliente preparado antes de obter o QPC de referência e admitir o bloco.

@@ -176,11 +176,36 @@ public sealed class WasapiSilentTests
     public async Task SilentTransportPrimesBeforeRenderThenStartsCaptureOnStableOwnersAndReleasesInOrder()
     {
         var route = WasapiContractTests.Route(); var calls = new Calls(route); var guard = new TransportActivityGuard();
+        const uint frames = 480;
+        calls.Input.PacketLimit = 1;
+        calls.Input.PacketFrames = frames;
+        int capturePublished = 0;
+        bool renderScheduled = false;
+        // O próximo Next ocorre após liberar o pacote inteiro e publicar seus frames na FIFO.
+        calls.Input.OnStep = step =>
+        {
+            if (step == "Next" && !calls.Input.CaptureReleases.IsEmpty)
+                Volatile.Write(ref capturePublished, 1);
+        };
+        calls.Output.RenderPaddingOverride = () =>
+        {
+            if (renderScheduled || Volatile.Read(ref capturePublished) == 0) return calls.Output.Capacity;
+            renderScheduled = true;
+            return calls.Output.Capacity - frames;
+        };
         await using var session = new WasapiSilentSession(route, guard, calls.Open);
         var result = await session.RunAsync(Duration, TestContext.Current.CancellationToken);
-        Assert.True(result.Completed); Assert.False(result.ResourcesRetained); Assert.Null(result.Failure); Assert.True(result.MovementProven); Assert.True(result.TransportObserved);
+        Assert.True(result.Completed); Assert.False(result.ResourcesRetained); Assert.Null(result.Failure);
+        Assert.True(result.MovementProven,
+            $"A captura confirmou {result.Capture.MovementSamples} leituras de movimento e o render confirmou {result.Playback.MovementSamples}.");
+        Assert.True(result.TransportObserved,
+            $"Duração concluída = {result.DurationReached}, frames aceitos = {result.Capture.FramesAccepted}, frames lidos da FIFO = {result.ReadFrames}.");
         Assert.True(result.AlwaysSilent); Assert.False(result.DriftControlEnabled); Assert.Equal(4096, result.FifoCapacityFrames);
-        Assert.Equal(1056, result.Playback.PrimedFrames); Assert.True(result.ProducedFrames > 0); Assert.True(result.Playback.FramesReleased > 0);
+        Assert.Equal(1056, result.Playback.PrimedFrames);
+        Assert.Equal(frames, result.Capture.FramesAccepted);
+        Assert.Equal(frames, result.ProducedFrames);
+        Assert.Equal(frames, result.ReadFrames);
+        Assert.Equal(result.Playback.PrimedFrames + frames, result.Playback.FramesReleased);
         Assert.Equal(result.Capture.PacketsAcquired, result.Capture.PacketsReleased);
         Assert.Equal(result.Capture.PacketsReleased, result.Capture.PacketsAccepted);
         Assert.Equal(0, result.Capture.StartupDiscardedPackets);
@@ -219,6 +244,9 @@ public sealed class WasapiSilentTests
         var result = await session.RunAsync(Duration, TestContext.Current.CancellationToken);
         Assert.NotNull(result.Failure); Assert.Equal(flags, result.Capture.PacketFlags); Assert.True(result.Completed);
         Assert.Equal(1, result.Capture.PacketsAcquired); Assert.Equal(1, result.Capture.PacketsReleased); Assert.Equal(0, result.Capture.FramesReleased);
+        var rejection = Assert.IsType<WasapiCapturePacketRejection>(result.Capture.PacketRejection);
+        Assert.Equal(WasapiCapturePacketRejectionReason.InvalidFlags, rejection.Reason);
+        Assert.Equal(flags, rejection.Flags);
     }
     [Theory]
     [InlineData(1u, false)]
@@ -268,6 +296,9 @@ public sealed class WasapiSilentTests
         Assert.True(result.Completed);
         Assert.False(result.TransportObserved);
         Assert.Equal(first | second, result.Capture.PacketFlags);
+        var rejection = Assert.IsType<WasapiCapturePacketRejection>(result.Capture.PacketRejection);
+        Assert.Equal(WasapiCapturePacketRejectionReason.UnexpectedDiscontinuity, rejection.Reason);
+        Assert.Equal(second, rejection.Flags);
         Assert.Equal(new uint[] { 480, 0 }, calls.Input.CaptureReleases.ToArray());
         Assert.Equal((first & 1) != 0 ? 1 : 0, result.Capture.StartupDiscardedPackets);
         Assert.Equal((first & 1) != 0 ? 0 : 1, result.Capture.PacketsAccepted);
@@ -280,6 +311,7 @@ public sealed class WasapiSilentTests
     [InlineData("oversized")]
     [InlineData("zero-size")]
     [InlineData("bad-pointer")]
+    [InlineData("missing-time")]
     [InlineData("stale-time")]
     [InlineData("future-time")]
     public async Task InvalidInitialDiscontinuityReleasesZeroAndStops(string fault)
@@ -292,6 +324,7 @@ public sealed class WasapiSilentTests
         if (fault == "oversized") calls.Input.PacketFrames = 2000;
         if (fault == "zero-size") { calls.Input.AdvertisedFrames = 48; calls.Input.PacketFrames = 0; }
         if (fault == "bad-pointer") calls.Input.NullData = true;
+        if (fault == "missing-time") calls.Input.PacketQpc = 0;
         if (fault == "stale-time") calls.Input.PacketQpc = 1;
         if (fault == "future-time") calls.Input.PacketQpc = ulong.MaxValue;
         await using var session = new WasapiSilentSession(route, new(), calls.Open);
@@ -305,6 +338,23 @@ public sealed class WasapiSilentTests
         Assert.Equal(0, result.Capture.StartupDiscardedPackets);
         Assert.Equal(0, result.Capture.PacketsAccepted);
         Assert.Equal(0, result.ProducedFrames);
+        var rejection = Assert.IsType<WasapiCapturePacketRejection>(result.Capture.PacketRejection);
+        var expected = fault switch
+        {
+            "late" => WasapiCapturePacketRejectionReason.UnexpectedDiscontinuity,
+            "mismatched-size" or "zero-size" => WasapiCapturePacketRejectionReason.SizeMismatch,
+            "oversized" => WasapiCapturePacketRejectionReason.CapacityExceeded,
+            "bad-pointer" => WasapiCapturePacketRejectionReason.MissingData,
+            "missing-time" => WasapiCapturePacketRejectionReason.MissingTimestamp,
+            "stale-time" => WasapiCapturePacketRejectionReason.StaleTimestamp,
+            _ => WasapiCapturePacketRejectionReason.FutureTimestamp
+        };
+        Assert.Equal(expected, rejection.Reason);
+        Assert.Equal(calls.Input.AdvertisedFrames ?? calls.Input.PacketFrames ?? 48u, rejection.AnnouncedFrames);
+        Assert.Equal(calls.Input.PacketFrames ?? 48u, rejection.AcquiredFrames);
+        Assert.Equal(1u, rejection.Flags);
+        Assert.Equal(calls.Input.PacketQpc ?? result.Capture.PacketQpc100ns, rejection.Qpc100ns);
+        Assert.True(rejection.CheckedAt100ns > 0);
     }
 
     [Theory]

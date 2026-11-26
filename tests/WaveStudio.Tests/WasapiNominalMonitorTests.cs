@@ -177,6 +177,14 @@ public sealed class WasapiNominalMonitorTests
         Assert.Equal(expected, report.Cleanup.Failure);
         Assert.True(report.Cleanup.Completed);
         Assert.False(report.Cleanup.ResourcesRetained);
+        if (fault == "timestamp")
+        {
+            var rejected = Assert.IsType<WasapiCapturePacketRejection>(report.Cleanup.Capture.PacketRejection);
+            Assert.Equal(WasapiCapturePacketRejectionReason.InvalidFlags, rejected.Reason);
+            Assert.Equal(4u, rejected.Flags);
+            Assert.Equal(0u, rig.Calls.Input.CaptureReleases.Last());
+            Assert.Equal(before, report.Cleanup.Playback.FramesReleased);
+        }
         Assert.True(rig.Calls.Output.ReleasedFrames >= before);
         Assert.Equal(0, report.Cleanup.UnderrunFrames + report.Cleanup.DroppedFrames);
         using var lease = guard.TryAcquire(AudioActivity.ShortDiagnostic);

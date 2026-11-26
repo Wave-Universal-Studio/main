@@ -58,7 +58,8 @@ internal sealed class SingleCableAcceptance : IAsyncDisposable
     {
         topology.Validate();
         if (!operatorStop.CanBeCanceled || topology.Generation > long.MaxValue - 3 ||
-            !ExternalRouteConfiguration.CanRead(before.Browser) || !ExternalRouteConfiguration.CanRead(before.Consumer) ||
+            !ExternalRouteConfiguration.CanRead(before.Browser) || before.Browser.Disabled ||
+            !ExternalRouteConfiguration.CanRead(before.Consumer) ||
             StringComparer.OrdinalIgnoreCase.Equals(before.Browser.ClientId, before.Consumer.ClientId) ||
             IsCable(before.Browser.EndpointId) || IsCable(before.Consumer.EndpointId))
             throw new ArgumentException("Snapshot original, geração e parada são obrigatórios. O cabo precisa estar isolado no estado original.");
@@ -67,8 +68,8 @@ internal sealed class SingleCableAcceptance : IAsyncDisposable
         QuietTopology = topology.AtGeneration(topology.Generation + 1);
         MicrophoneTopology = topology.AtGeneration(topology.Generation + 2);
         Before = before;
-        BrowserSelections = Before with { Browser = before.Browser with { EndpointId = topology.Cable.Render.Endpoint.Id } };
-        MicrophoneSelections = Before with { Consumer = before.Consumer with { EndpointId = topology.Cable.Capture.Endpoint.Id } };
+        BrowserSelections = Before with { Browser = before.Browser.SelectEndpoint(topology.Cable.Render.Endpoint.Id) };
+        MicrophoneSelections = Before with { Consumer = before.Consumer.SelectEndpoint(topology.Cable.Capture.Endpoint.Id) };
         batchLease = (guard ?? TransportActivityGuard.Shared).TryAcquire(AudioActivity.IsolatedTransport)
             ?? throw new InvalidOperationException("Outra atividade de áudio está ativa.");
         stop = CancellationTokenSource.CreateLinkedTokenSource(operatorStop);

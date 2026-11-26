@@ -63,10 +63,10 @@ public sealed class WasapiNativeAudibleProofTests(ITestOutputHelper output)
         finally { foreach (var process in processes) process.Dispose(); }
     }
 
-    internal static async Task ConfirmStart(CancellationToken token)
+    internal static async Task ConfirmStart(CancellationToken token, TimeSpan? confirmationWindow = null)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(15));
+        deadline.CancelAfter(confirmationWindow ?? TimeSpan.FromSeconds(15));
         bool stopVerified = false;
         while (true)
         {

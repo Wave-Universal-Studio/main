@@ -6,13 +6,15 @@ namespace WaveStudio.Audio.Engine;
 
 // Propriedade isolada dos recursos nativos. Aquisição, consulta e liberação ocorrem nesta thread MTA proprietária.
 // Não usa interfaces privadas ou RCWs da NAudio. Reutiliza a biblioteca apenas para decodificar o formato de forma independente.
-internal sealed class NativeWasapiPreparationDevice(TransportEndpoint requested) : IWasapiPreparationDevice
+internal sealed class NativeWasapiPreparationDevice(TransportEndpoint requested, uint streamFlags = 0) : IWasapiPreparationDevice
 {
     private NativeReference<IPreparationEnumerator>? enumerator;
     private NativeReference<IPreparationDevice>? device;
     private bool apartmentInitialized, disposed;
     private readonly int owner = Environment.CurrentManagedThreadId;
     public static IWasapiPreparationDevice Open(TransportEndpoint endpoint) => new NativeWasapiPreparationDevice(endpoint);
+    public static IWasapiPreparationDevice OpenNonPersistent(TransportEndpoint endpoint) =>
+        new NativeWasapiPreparationDevice(endpoint, streamFlags: 0x00080000); // AUDCLNT_STREAMFLAGS_NOPERSIST
 
     public void ValidateIdentity(TransportEndpoint endpoint)
     {
@@ -51,7 +53,7 @@ internal sealed class NativeWasapiPreparationDevice(TransportEndpoint requested)
         ValidateIdentity(requested);
         var iid = typeof(IPreparationAudioClient).GUID;
         int hr = device!.Value.Activate(in iid, 1, 0, out nint pointer);
-        return new Client(NativeReference<IPreparationAudioClient>.Adopt(hr, pointer, "IMMDevice.Activate"), requested);
+        return new Client(NativeReference<IPreparationAudioClient>.Adopt(hr, pointer, "IMMDevice.Activate"), requested, streamFlags);
     }
     private void CheckOwner()
     {
@@ -67,7 +69,7 @@ internal sealed class NativeWasapiPreparationDevice(TransportEndpoint requested)
         disposed = true;
     }
 
-    private sealed class Client(NativeReference<IPreparationAudioClient> client, TransportEndpoint endpoint) : IWasapiNativeBoundStreamClient
+    private sealed class Client(NativeReference<IPreparationAudioClient> client, TransportEndpoint endpoint, uint streamFlags) : IWasapiNativeBoundStreamClient
     {
         public TransportEndpoint Endpoint => endpoint;
         private WasapiPcm? negotiated;
@@ -136,7 +138,7 @@ internal sealed class NativeWasapiPreparationDevice(TransportEndpoint requested)
         {
             if (format == 0 || initialized) throw new InvalidOperationException("Preparação fora de sequência.");
             var session = Guid.NewGuid(); // Sessão isolada, sem vínculo com os controles de diagnóstico ou de volume das sessões.
-            WasapiCallException.RequireSuccess(client.Value.Initialize(0, 0, 0, 0, format, in session), "IAudioClient.Initialize");
+            WasapiCallException.RequireSuccess(client.Value.Initialize(0, streamFlags, 0, 0, format, in session), "IAudioClient.Initialize");
             initialized = true;
         }
         public (uint, long) ReadBufferInfo()

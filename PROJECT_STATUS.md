@@ -2,6 +2,12 @@
 
 Atualizado em 26/11/2026.
 
+## Ciclo de vida WASAPI e medições em hardware
+
+O coordenador dos barramentos prepara, inicia e para clientes WASAPI sem persistir preferências de sessão. Uma MTA prepara toda a geração, valida formato e identidade, preenche as saídas com silêncio, inicia os destinos antes das fontes e invalida a entrega antes de Stop. A liberação incerta retém o guard e os recursos. Uma nova tentativa explícita recria clientes, clocks e filas com geração superior. A verificação dessa integração usa substitutos de COM. O mixer e o desktop continuam com seus caminhos anteriores.
+
+O runner do cabo simples aceita a fonte do OBS originalmente desativada e exige restaurar esse estado. O diagnóstico nominal de até 120 s preserva a janela e os limites do controlador. A prova acústica explícita usa três sinais sintéticos curtos e conserva somente métricas. Os resultados reais e as pendências permanecem no [relatório físico](docs/PHYSICAL_VALIDATION.md).
+
 ## F5-I2C4 — clocks dos clientes WASAPI preparados
 
 O scheduler recebe na MTA os clientes já preparados. Os serviços `IAudioClock` e de pacotes vêm do mesmo cliente. O corte coleta primeiro todas as leituras de hardware e só depois o QPC real. Os validadores da F5-I2C3 mantêm as regras de admissão e quarentena por geração. A vinculação protege o cliente pai até confirmar a liberação dos serviços. A coleta e o fechamento foram verificados com substitutos de COM. A integração ainda depende do coordenador que prepara, inicia e para os streams de hardware.

@@ -339,6 +339,8 @@ public sealed partial class WasapiDriftTests
         private readonly AutoResetEvent[] pulse = [new(false), new(false)];
         private readonly AutoResetEvent[] finished = [new(false), new(false)];
         private readonly WaitHandle[][] waits = [new WaitHandle[2], new WaitHandle[2]];
+        private readonly ManualResetEventSlim stopKnown = new();
+        private WaitHandle? ownerStop;
         private readonly double inputActual, outputActual;
         private readonly TransportRoute route;
         internal TransportRoute Route => route;
@@ -414,6 +416,7 @@ public sealed partial class WasapiDriftTests
             int index = input ? 0 : 1;
             waits[index][0] = pulse[index];
             waits[index][1] = stopped;
+            if (Interlocked.CompareExchange(ref ownerStop, stopped, null) is null) stopKnown.Set();
             WaitHandle.WaitAny(waits[index]);
         }
 
@@ -432,25 +435,35 @@ public sealed partial class WasapiDriftTests
             SetTime(ordinal);
             desiredCapture = (long)Math.Floor(ordinal * inputActual / 100);
             desiredRender = (long)Math.Floor(ordinal * outputActual / 100);
-            Cycle(0, run);
-            Cycle(1, run);
+            if (!Cycle(0, run) || !Cycle(1, run)) return;
             for (int i = 0; i < ExtraRenderCycles; i++)
             {
                 desiredRender = rendered + ExtraRenderFrames;
-                Cycle(1, run);
+                if (!Cycle(1, run)) break;
             }
         }
 
-        private void Cycle(int role, Task run)
+        private bool Cycle(int role, Task run)
         {
-            if (run.IsCompleted) return;
+            if (run.IsCompleted) return false;
+            if (Volatile.Read(ref ownerStop) is not { } stopped)
+            {
+                int ready = WaitHandle.WaitAny([stopKnown.WaitHandle, ((IAsyncResult)run).AsyncWaitHandle], 5000);
+                Assert.NotEqual(WaitHandle.WaitTimeout, ready);
+                if (ready != 0) return false;
+                stopped = Volatile.Read(ref ownerStop)!;
+            }
+            if (stopped.WaitOne(0)) return false;
             pulse[role].Set();
-            var stopHandle = ((IAsyncResult)run).AsyncWaitHandle;
-            Assert.NotEqual(WaitHandle.WaitTimeout, WaitHandle.WaitAny([finished[role], stopHandle], 5000));
+            // Uma falha pula CycleCompleted. O sinal de Stop chega do owner antes de o teste aguardar o relatório.
+            int result = WaitHandle.WaitAny([stopped, finished[role]], 5000);
+            Assert.NotEqual(WaitHandle.WaitTimeout, result);
+            return result == 1;
         }
 
         public void Dispose()
         {
+            stopKnown.Dispose();
             foreach (var signal in pulse) signal.Dispose();
             foreach (var signal in finished) signal.Dispose();
         }

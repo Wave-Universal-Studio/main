@@ -1,5 +1,11 @@
 # Arquitetura do Wave Studio
 
+## Ciclo de vida da geração WASAPI dos barramentos
+
+`OwnedWasapiBusSession.RunAsync` cria uma MTA por execução explícita. O guard e a geração são reservados antes da ativação. Os clientes são preparados sem persistência, vinculados aos clocks e serviços de pacotes e revalidados antes de Start. Os renders recebem preenchimento SILENT e iniciam antes das capturas. A espera cancelável de 10 ms não tenta recuperar atrasos em rajada. O prazo monotônico é conferido nas etapas do scheduler e antes de liberar um buffer de render com PCM. A MTA mantém a propriedade de chamadas COM síncronas que ainda estejam em andamento.
+
+A ponte e os tickets são invalidados antes de Stop. Todos os clientes cujo Start foi tentado recebem Stop em ordem inversa. Uma falha de parada ou liberação retém os recursos em quarentena, com a MTA nativa sem atividade. Depois do encerramento confirmado, a recuperação exige solicitação explícita e geração superior, com novos clientes, âncoras e filas. O coordenador interno ainda requer calibração física da cadência e dos pacotes para uso contínuo.
+
 ## F5-I2C4 — corte QPC com os serviços dos owners preparados
 
 `OwnedBusScheduler.CreatePrepared` reserva a geração e o guard na MTA proprietária antes de obter os serviços. A captura e o render conferem endpoint, geração e formato PCM negociado. Cada owner usa `GetService` para obter o clock e seu serviço de pacotes do mesmo cliente WASAPI. O scheduler lê `IAudioClock.GetPosition` de cada owner e depois usa `WasapiTime.Now100ns` como referência comum do corte. As posições continuam em unidades de cada dispositivo. HRESULT e frequência passam pelo adaptador existente antes da entrega de PCM. O corte usa área pré-alocada. A rota nativa recusa amostras e referência QPC injetadas. [Contrato de IAudioClock.GetPosition](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclock-getposition).

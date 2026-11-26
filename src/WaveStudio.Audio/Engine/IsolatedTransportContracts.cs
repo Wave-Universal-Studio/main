@@ -16,7 +16,7 @@ internal sealed class TransportActivityGuard
         return Interlocked.CompareExchange(ref owner, (int)activity, 0) == 0 ? new Lease(this) : null;
     }
     // O lease exclusivo também serializa a validação da geração, fora dos passos de áudio.
-    public IDisposable? TryAcquireOwnedBus(long generation)
+    public OwnedBusLease? TryAcquireOwnedBus(long generation)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(generation);
         var lease = TryAcquire(AudioActivity.IsolatedTransport);
@@ -27,7 +27,15 @@ internal sealed class TransportActivityGuard
             return null;
         }
         lastOwnedBusGeneration = generation;
-        return lease;
+        return new(this, generation, lease);
+    }
+
+    internal sealed class OwnedBusLease(TransportActivityGuard guard, long generation, IDisposable activity) : IDisposable
+    {
+        private IDisposable? active = activity;
+        internal bool Authorizes(TransportActivityGuard owner, long epoch) =>
+            ReferenceEquals(owner, guard) && epoch == generation && Volatile.Read(ref active) is not null;
+        public void Dispose() => Interlocked.Exchange(ref active, null)?.Dispose();
     }
 
     private sealed class Lease(TransportActivityGuard guard) : IDisposable

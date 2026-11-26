@@ -34,27 +34,28 @@ public sealed class WasapiNativeSilentTests(ITestOutputHelper output)
         var token = TestContext.Current.CancellationToken;
         var route = await Preflight("WAVESTUDIO_DRIFT_DIAGNOSTIC_CAPTURE_NAME", "WAVESTUDIO_DRIFT_DIAGNOSTIC_HEADSET_NAME", token);
         await using var session = new WasapiSilentSession(route, nativeDriftDiagnostic: true);
-        var result = await session.RunAsync(TimeSpan.FromSeconds(10), token);
+        var duration = WasapiDriftObservation.MaximumDuration;
+        var result = await session.RunAsync(duration, token);
         var diagnostic = session.ReadDriftReport();
+        var observation = diagnostic?.Observation;
+        bool checkpointsConfirmed = observation?.CheckpointCoverageConfirmed(result.Observation100ns) == true;
+        bool prolongedNominalTransport = result.TransportObserved && result.Capture.CaptureTiming is { Confirmed: true } &&
+            result.AlwaysSilent && !result.ResourcesRetained && result.DroppedFrames == 0 && result.UnderrunFrames == 0 &&
+            checkpointsConfirmed;
         Save("wasapi-drift-diagnostic", "native-drift", new
         {
-            CaptureFormat = route.Capture.Mix, PlaybackFormat = route.Playback.Mix, Result = result, Diagnostic = diagnostic
+            CaptureFormat = route.Capture.Mix, PlaybackFormat = route.Playback.Mix,
+            RequestedDuration100ns = duration.Ticks, ProlongedNominalTransport = prolongedNominalTransport,
+            CheckpointsConfirmed = checkpointsConfirmed, Result = result, Diagnostic = diagnostic
         });
 
-        Assert.True(result.TransportObserved && result.Capture.CaptureTiming is { Confirmed: true },
-            "A coleta precisa confirmar transporte silencioso, continuidade, duração e limpeza.");
+        Assert.True(prolongedNominalTransport,
+            "O transporte prolongado exige SILENT, continuidade, duração, cortes coerentes, zero perdas e limpeza.");
         Assert.NotNull(diagnostic);
         Assert.False(diagnostic.CorrectionEnabled);
         Assert.Equal(0, diagnostic.TrackingUpdates);
-        Assert.True(diagnostic.AvailableCuts >= 60, "A coleta precisa de pelo menos 60 cortes coerentes.");
-        var windows = diagnostic.Recent.Where(s => s.CorrectionInterval is not null).ToArray();
-        Assert.True(windows.Length >= 10 && windows[^1].Cut100ns - windows[0].Cut100ns >= 40_000_000,
-            "A coleta precisa de janelas em trechos separados por pelo menos quatro segundos.");
-        Assert.All(diagnostic.Recent, s =>
-        {
-            Assert.Null(s.RequestedPpm);
-            Assert.Equal(0, s.Capture.Evidence.AppliedPpm);
-        });
+        Assert.NotNull(observation);
+        Assert.False(observation.CorrectionSeen);
     }
 
 

@@ -24,11 +24,12 @@ public sealed class NativeSingleCableProofTests
         Assert.Contains(browser.ProcessName.ToLowerInvariant(), new[] { "msedge", "chrome", "firefox" });
         Assert.Equal("obs64", obs.ProcessName, ignoreCase: true);
         var ids = new SingleCableEndpointIds(Read("RENDER"), Read("CAPTURE"), Read("HEADSET"), Read("MIC"));
-        var before = new ExternalSelections(Original(saved.Browser, browser, ids.Render), Original(saved.Obs, obs, ids.Capture));
+        var before = new ExternalSelections(Original(saved.Browser, browser, ids.Render),
+            Original(saved.Obs, obs, ids.Capture, allowDisabled: true));
         var topology = await NativeExternalRoute.ProbeSingleAsync(ids, 1, token);
         var isolation = await VerifyIsolation(topology, before, token);
-        var combined = new ExternalSelections(before.Browser with { EndpointId = ids.Render },
-            before.Consumer with { EndpointId = ids.Capture });
+        var combined = new ExternalSelections(before.Browser.SelectEndpoint(ids.Render),
+            before.Consumer.SelectEndpoint(ids.Capture));
         var reports = new List<PhaseEvidence>(2);
         CableQuietReport? quiet = null;
         ExternalRestoreReport? restoration = null;
@@ -78,6 +79,8 @@ public sealed class NativeSingleCableProofTests
             Assert.True(quiet.Passed, "Quietude não confirmada: " + quiet.Failure);
 
             Console.WriteLine("Navegador restaurado. Selecione só a captura do cabo na fonte isolada do OBS e confira.");
+            if (before.Consumer.Disabled)
+                Console.WriteLine("No OBS, abra Configurações > Áudio. Em Mic/Auxiliar, selecione CABLE Output e aplique.");
             var micSettings = await Observe(stop.Token);
             Console.WriteLine("Enter confirma a fase de microfone. Esc encerra.");
             if (await NativeExternalRouteProofTests.ReadKey(stop.Token, ConsoleKey.Enter, ConsoleKey.Escape) == ConsoleKey.Escape)
@@ -177,6 +180,8 @@ public sealed class NativeSingleCableProofTests
             if (plan.Browser == ExternalRestoreState.Restore || plan.Consumer == ExternalRestoreState.Restore)
             {
                 Console.WriteLine("Restaure somente as seleções marcadas Restore e confira mais uma vez.");
+                if (plan.Consumer == ExternalRestoreState.Restore && before.Consumer.Disabled)
+                    Console.WriteLine("No OBS, volte a Configurações > Áudio, deixe Mic/Auxiliar em Desativado e aplique.");
                 observed = await Observe(ct);
                 original = await NativeExternalRouteProofTests.OriginalAvailability(before, ct);
             }
@@ -206,13 +211,21 @@ public sealed class NativeSingleCableProofTests
         WasapiNativeAudibleProofTests.AssertNoOtherTestApphost();
     }
 
-    private static ExternalSelection Original(PrivateSelection saved, Process process, string temporary)
+    private static ExternalSelection Original(PrivateSelection saved, Process process, string temporary, bool allowDisabled = false)
     {
         Assert.Equal(saved.StartUtcTicks, process.StartTime.ToUniversalTime().Ticks);
         Assert.Equal(temporary, saved.Temporary);
         Assert.False(string.IsNullOrWhiteSpace(saved.Context) || string.IsNullOrWhiteSpace(saved.Before));
-        return new(NativeExternalRouteProofTests.ProcessIdentity(process, saved.Context), saved.Before == "DEFAULT" ? null : saved.Before, true, true);
+        return ParseOriginalSelection(NativeExternalRouteProofTests.ProcessIdentity(process, saved.Context), saved.Before, allowDisabled);
     }
+
+    internal static ExternalSelection ParseOriginalSelection(string clientId, string value, bool allowDisabled) => value switch
+    {
+        "DEFAULT" => new(clientId, null, true, true),
+        "DISABLED" when allowDisabled => new(clientId, null, true, true, Disabled: true),
+        "DISABLED" => throw new InvalidOperationException("A seleção desativada só é válida para a fonte do OBS."),
+        _ => new(clientId, value, true, true)
+    };
 
     private static async Task<NativeCableIsolation> VerifyIsolation(SingleCableTopology topology, ExternalSelections original, CancellationToken token)
     {
