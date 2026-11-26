@@ -1,5 +1,11 @@
 # Arquitetura do Wave Studio
 
+## F5-I2C4 — corte QPC com os serviços dos owners preparados
+
+`OwnedBusScheduler.CreatePrepared` reserva a geração e o guard na MTA proprietária antes de obter os serviços. A captura e o render conferem endpoint, geração e formato PCM negociado. Cada owner usa `GetService` para obter o clock e seu serviço de pacotes do mesmo cliente WASAPI. O scheduler lê `IAudioClock.GetPosition` de cada owner e depois usa `WasapiTime.Now100ns` como referência comum do corte. As posições continuam em unidades de cada dispositivo. HRESULT e frequência passam pelo adaptador existente antes da entrega de PCM. O corte usa área pré-alocada. A rota nativa recusa amostras e referência QPC injetadas. [Contrato de IAudioClock.GetPosition](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclock-getposition).
+
+O cliente preparado mantém a propriedade de seu próprio ciclo de vida. Um vínculo ativo impede o descarte do cliente até a liberação dos filhos na MTA. Uma falha parcial devolve os serviços adquiridos ou retém a atividade se a liberação for incerta. O encerramento invalida os tickets e tenta liberar todos os owners independentes, mesmo quando um deles falha. O modo de teste com clocks injetados continua separado. Preparação, Start, Stop do cliente e provas contínuas dependem da coordenação nativa posterior. O recorte de tempo atual precisa de calibração com os pacotes reais de hardware.
+
 ## F5-I2C3 — admissão temporal dos owners WASAPI
 
 A MTA entrega a `OwnedBusScheduler.Tick` um corte QPC dos owners já preparados, na ordem dos slots de captura e depois de reprodução. Cada entrada tem seu próprio `WasapiClockAdapter`, taxa e origem de posição. A primeira leitura apenas estabelece as âncoras. O primeiro bloco pode seguir após a segunda leitura válida, com avanço e unidade/frequência consistentes em todos os endpoints. O recorte exige timestamps presentes e não futuros, idade e intervalo de até 50 ms e diferença de até um bloco de 10 ms entre as leituras. A tolerância nominal existente (0,5% + 2 frames) é aplicada também ao avanço acumulado a partir da âncora de cada clock. São critérios conservadores para o caminho injetado. Posições absolutas e frequências de endpoints distintos permanecem independentes.

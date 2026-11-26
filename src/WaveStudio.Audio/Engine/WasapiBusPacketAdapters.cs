@@ -21,6 +21,7 @@ internal sealed class WasapiCaptureBlockAdapter : IDisposable
     internal TransportEndpoint Endpoint => endpoint;
     internal BoundedBusPcmTransport Bridge => bridge;
     internal PcmFloatFormat Format => format;
+    internal WasapiPcm NativeFormat { get; }
     internal void FailClosed() { Interlocked.Exchange(ref closed, 1); bridge.Dispose(); }
 
     public WasapiCaptureBlockAdapter(BoundedBusPcmTransport bridge, TransportEndpoint endpoint,
@@ -37,6 +38,7 @@ internal sealed class WasapiCaptureBlockAdapter : IDisposable
             throw new NotSupportedException("O pacote WASAPI deve corresponder ao formato da fonte; converta antes de alimentar a ponte.");
         this.endpoint = endpoint;
         format = sourceFormat;
+        NativeFormat = nativeFormat;
         framesPerBlock = sourceFormat.SampleRate / 100;
         bytesPerBlock = checked(framesPerBlock * nativeFormat.BlockAlign);
         scratch = new float[checked(framesPerBlock * sourceFormat.Channels)];
@@ -89,6 +91,7 @@ internal sealed class WasapiRenderBlockAdapter : IDisposable
     private readonly int bytesPerBlock;
     private int closed, processing;
     internal PcmFloatFormat Format { get; }
+    internal WasapiPcm NativeFormat { get; }
     internal BoundedBusPcmTransport Bridge => bridge;
 
     internal void FailClosed() { Interlocked.Exchange(ref closed, 1); bridge.Dispose(); }
@@ -103,6 +106,7 @@ internal sealed class WasapiRenderBlockAdapter : IDisposable
         if (nativeFormat.FloatFormat != mixFormat)
             throw new NotSupportedException("A saída WASAPI requer taxa e canais iguais aos barramentos; adapte o formato antes do render.");
         Format = mixFormat;
+        NativeFormat = nativeFormat;
         scratch = new float[checked(mixFormat.SampleRate / 100 * mixFormat.Channels)];
         bytesPerBlock = checked(mixFormat.SampleRate / 100 * nativeFormat.BlockAlign);
     }

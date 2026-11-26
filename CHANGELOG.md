@@ -2,6 +2,12 @@
 
 ## Em desenvolvimento
 
+### 2026-11-26 — F5-I2C4, clocks dos owners WASAPI
+
+- O scheduler lê o clock de cada cliente preparado antes de obter o QPC de referência e admitir o bloco.
+- Clock e buffers compartilham o mesmo cliente, endpoint, geração e formato. A reserva de atividade cobre aquisição, uso e descarte.
+- A invalidação bloqueia novas entregas. Liberação incerta conserva o cliente e a reserva, e o encerramento tenta fechar os demais owners. A reconexão USB do headset foi validada separadamente em leitura.
+
 ### 2026-11-26 — F5-I2C3-CLOCK-ADMISSION-AND-RECOVERY
 
 - Admissão por clocks independentes, com aquecimento sem buffers, validação nominal acumulada e janela comum para os pacotes de captura.

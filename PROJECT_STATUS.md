@@ -2,6 +2,12 @@
 
 Atualizado em 26/11/2026.
 
+## F5-I2C4 — clocks dos clientes WASAPI preparados
+
+O scheduler recebe na MTA os clientes já preparados. Os serviços `IAudioClock` e de pacotes vêm do mesmo cliente. O corte coleta primeiro todas as leituras de hardware e só depois o QPC real. Os validadores da F5-I2C3 mantêm as regras de admissão e quarentena por geração. A vinculação protege o cliente pai até confirmar a liberação dos serviços. A coleta e o fechamento foram verificados com substitutos de COM. A integração ainda depende do coordenador que prepara, inicia e para os streams de hardware.
+
+A reconexão assistida readmitiu o mesmo headset e recuperou sua leitura de pico, preservando os seis padrões do Windows. A captura concorrente ainda bloqueia a coleta física de clocks. [Evidência física](docs/PHYSICAL_VALIDATION.md#reconexão-assistida-do-headset-em-26112026).
+
 ## Implementado — F5-I2C3, 26/11/2026
 
 O scheduler MTA exige um corte por geração e por endpoint, confirma progresso e taxa nominal acumulada, recusa timestamps ausentes, futuros, antigos ou desalinhados e só publica PCM de captura dentro da janela comum. O Stop invalida a ponte. Um novo ciclo exige geração superior e novas âncoras. A liberação incerta mantém o owner e o guard retidos. O escopo permanece injetado. A [PR #18](https://github.com/Wave-Universal-Studio/main/pull/18) foi integrada em `4f7e4be`. O [CI Windows x64](https://github.com/Wave-Universal-Studio/main/actions/runs/45896014713) confirmou 979 testes aprovados em Debug e 979 em Release, zero falhas, sete Explicit excluídos por configuração e builds sem avisos ou erros.
