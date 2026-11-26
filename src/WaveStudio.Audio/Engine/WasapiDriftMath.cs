@@ -16,16 +16,30 @@ internal static class WasapiDriftMath
     public const long MaxAge100ns = 5_000_000;
 
     public static PpmInterval? Estimate(WasapiDriftPair first, WasapiDriftPair last,
-        int inputRate, int outputRate, WasapiTimingUncertainty uncertainty)
+        int inputRate, int outputRate, WasapiTimingUncertainty uncertainty) =>
+        Estimate(first, last, inputRate, outputRate, uncertainty, Window100ns - MaxAge100ns, Window100ns + 2 * MaxAge100ns);
+
+    public static PpmInterval? EstimateObservation(WasapiDriftPair first, WasapiDriftPair last,
+        int inputRate, int outputRate, WasapiTimingUncertainty uncertainty) =>
+        Estimate(first, last, inputRate, outputRate, uncertainty, WasapiDriftObservation.MinimumOverlap100ns,
+            (ulong)(WasapiDriftObservation.MaximumDuration.Ticks + MaxAge100ns));
+
+    public static ulong Overlap100ns(WasapiDriftPair first, WasapiDriftPair last)
     {
-        if (first.CaptureEpoch != last.CaptureEpoch || first.RenderEpoch != last.RenderEpoch) return null;
         ulong overlapStart = Math.Max(Math.Max(first.Capture.Qpc100ns, first.Render.Qpc100ns), first.Packet.Qpc100ns);
         ulong overlapEnd = Math.Min(Math.Min(last.Capture.Qpc100ns, last.Render.Qpc100ns), last.Packet.Qpc100ns);
-        if (overlapEnd <= overlapStart || overlapEnd - overlapStart < Window100ns - MaxAge100ns) return null;
+        return overlapEnd > overlapStart ? overlapEnd - overlapStart : 0;
+    }
 
-        var capture = RelativeRate(first.Capture, last.Capture, inputRate, uncertainty.CaptureFrames);
-        var packet = RelativeRate(first.Packet, last.Packet, inputRate, uncertainty.PacketFrames);
-        var render = RelativeRate(first.Render, last.Render, outputRate, uncertainty.RenderFrames);
+    private static PpmInterval? Estimate(WasapiDriftPair first, WasapiDriftPair last,
+        int inputRate, int outputRate, WasapiTimingUncertainty uncertainty, ulong minimumSpan, ulong maximumSpan)
+    {
+        if (first.CaptureEpoch != last.CaptureEpoch || first.RenderEpoch != last.RenderEpoch ||
+            Overlap100ns(first, last) < minimumSpan) return null;
+
+        var capture = RelativeRate(first.Capture, last.Capture, inputRate, uncertainty.CaptureFrames, minimumSpan, maximumSpan);
+        var packet = RelativeRate(first.Packet, last.Packet, inputRate, uncertainty.PacketFrames, minimumSpan, maximumSpan);
+        var render = RelativeRate(first.Render, last.Render, outputRate, uncertainty.RenderFrames, minimumSpan, maximumSpan);
         if (capture is not { } c || packet is not { } p || render is not { } r ||
             c.Minimum > p.Maximum || p.Minimum > c.Maximum) return null;
 
@@ -33,13 +47,14 @@ internal static class WasapiDriftMath
         return new((r.Minimum / c.Maximum - 1) * 1e6, (r.Maximum / c.Minimum - 1) * 1e6);
     }
 
-    private static PpmInterval? RelativeRate(WasapiDriftPoint first, WasapiDriftPoint last, int rate, double uncertainty)
+    private static PpmInterval? RelativeRate(WasapiDriftPoint first, WasapiDriftPoint last, int rate, double uncertainty,
+        ulong minimumSpan, ulong maximumSpan)
     {
         if (first.Qpc100ns == 0 || last.Qpc100ns <= first.Qpc100ns || last.Position <= first.Position ||
             first.Frequency == 0 || first.Frequency != last.Frequency ||
             !double.IsFinite(uncertainty) || uncertainty < 0) return null;
         ulong duration = last.Qpc100ns - first.Qpc100ns;
-        if (duration is < Window100ns - MaxAge100ns or > Window100ns + 2 * MaxAge100ns) return null;
+        if (duration < minimumSpan || duration > maximumSpan) return null;
         double frames = (double)((UInt128)(last.Position - first.Position) * (uint)rate) / first.Frequency;
         double expected = rate * (duration / 10_000_000d);
         double error = 2 * uncertainty;

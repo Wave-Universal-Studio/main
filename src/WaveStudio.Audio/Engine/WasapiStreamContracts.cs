@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json.Serialization;
 
 namespace WaveStudio.Audio.Engine;
 
@@ -27,6 +28,17 @@ internal interface IWasapiBusOwner : IDisposable
 }
 
 internal readonly record struct WasapiCaptureBuffer(int HResult, nint Data, uint Frames, uint Flags, ulong Position, ulong Qpc100ns);
+
+[JsonConverter(typeof(JsonStringEnumConverter<WasapiCapturePacketRejectionReason>))]
+internal enum WasapiCapturePacketRejectionReason
+{
+    SizeMismatch, CapacityExceeded, InvalidFlags, UnexpectedDiscontinuity,
+    MissingTimestamp, FutureTimestamp, StaleTimestamp, MissingData
+}
+
+internal readonly record struct WasapiCapturePacketRejection(WasapiCapturePacketRejectionReason Reason,
+    uint AnnouncedFrames, uint AcquiredFrames, uint Flags, ulong Position, ulong Qpc100ns, long CheckedAt100ns);
+
 internal interface IWasapiCapturePackets : IDisposable
 {
     uint NextPacketSize();
@@ -114,7 +126,7 @@ internal sealed record WasapiRoleSnapshot(bool Initialized, bool StartAttempted,
     int? StartHResult, int? StopHResult, int? AcquireHResult, int? ReleaseHResult, NativeClockResult? ClockStatus,
     long PacketsAccepted, long FramesAccepted, long StartupDiscardedPackets, long StartupDiscardedFrames,
     uint StartupDiscardFlags, ulong StartupDiscardPosition, ulong StartupDiscardQpc100ns, NativeClockHistory? ClockHistory,
-    WasapiCaptureTimingSnapshot? CaptureTiming = null);
+    WasapiCaptureTimingSnapshot? CaptureTiming = null, WasapiCapturePacketRejection? PacketRejection = null);
 
 internal sealed record WasapiSilentSnapshot(WasapiRoleSnapshot Capture, WasapiRoleSnapshot Playback,
     bool Completed, bool ResourcesRetained, string? Failure, int? HResult,

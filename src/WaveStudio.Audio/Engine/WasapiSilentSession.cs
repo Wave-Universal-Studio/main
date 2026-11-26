@@ -40,7 +40,7 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
     private readonly ManualResetEventSlim stop = new();
     private readonly TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource nominalFinished = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private long nominalDeadline;
+    private long observationDeadline;
     private readonly DeliveryTicket ticket;
     private readonly Owner capture, playback;
     private IDisposable? lease;
@@ -94,7 +94,10 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
     }
     public Task<WasapiSilentSnapshot> RunAsync(TimeSpan duration, CancellationToken token = default)
     {
-        if (duration < TimeSpan.FromMilliseconds(50) || duration > (nominal is null ? TimeSpan.FromSeconds(simulation is null ? 10 : 120) : WasapiNominalSession.MaximumDuration)) throw new ArgumentOutOfRangeException(nameof(duration));
+        TimeSpan maximumDuration = nominal is not null ? WasapiNominalSession.MaximumDuration
+            : nativeDriftDiagnostic ? WasapiDriftObservation.MaximumDuration
+            : TimeSpan.FromSeconds(simulation is null ? 10 : 120);
+        if (duration < TimeSpan.FromMilliseconds(50) || duration > maximumDuration) throw new ArgumentOutOfRangeException(nameof(duration));
         lock (control)
         {
             if (run is not null || stop.IsSet) throw new InvalidOperationException("Sessão de prova é de uso único.");
@@ -121,7 +124,8 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
     }
     internal bool DriftRunning => ticket.IsValid && drift is not null;
     private long Now100ns() => simulation?.Now() ?? WasapiTime.Now100ns();
-    private bool NominalDeadlinePassed => nominal is not null && ticket.IsValid && Now100ns() > nominalDeadline;
+    private bool ObservationDeadlinePassed => (nominal is not null || nativeDriftDiagnostic) &&
+        ticket.IsValid && Now100ns() > observationDeadline;
 
     internal WasapiDriftSample StepDrift()
     {
@@ -160,7 +164,7 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
             var cut = ReadCheckpoint(route.Capture.Endpoint.Generation, nominal.Baseline);
             var reason = nominal.Observe(ledger, cut, Now100ns());
             if (reason is not null) Fail(reason);
-            else if (simulation is not null && Now100ns() >= nominalDeadline && cut.Checkpoint is not null)
+            else if (simulation is not null && Now100ns() >= observationDeadline && cut.Checkpoint is not null)
                 nominalFinished.TrySetResult();
         }
     }
@@ -226,10 +230,10 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
                         Math.Ceiling(outputRate * playback.Period / 10_000_000d),
                         Math.Ceiling(inputRate * capture.Period / 10_000_000d));
                     lock (driftGate) drift = new(inputRate, outputRate, path!.CapacityFrames,
-                        simulation?.ApplyCorrection == true, uncertainty, begin);
+                        simulation?.ApplyCorrection == true, uncertainty, begin, observeLongDuration: nativeDriftDiagnostic);
                 }
                 nominal?.Start(begin);
-                if (nominal is not null) nominalDeadline = checked(begin + duration.Ticks);
+                if (nominal is not null || nativeDriftDiagnostic) observationDeadline = checked(begin + duration.Ticks);
                 ticket.Enable();
                 using var delayCancellation = new CancellationTokenSource();
                 var limit = Task.Delay(duration, delayCancellation.Token);
@@ -325,6 +329,7 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
         private string? error, cleanup;
         private WasapiRunningClock? motion;
         private WasapiCaptureTiming? captureTiming;
+        private WasapiCapturePacketRejection? packetRejection;
         private WasapiClockReading? lastClock;
         private int? startResult, stopResult, acquireResult, releaseResult;
         private long nextClock, startTime, startRequested100ns;
@@ -416,7 +421,7 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
             var journal = input ? ledger?.Capture : ledger?.Render;
             if (journal is null) { ProcessAudio(prime); return; }
 
-            if (!prime && (session.NominalDeadlinePassed || !CheckCommandAge())) return;
+            if (!prime && (session.ObservationDeadlinePassed || !CheckCommandAge())) return;
             var path = session.path!;
             long missingBefore = input ? path.Dropped : path.Underrun;
             journal.Begin();
@@ -489,7 +494,7 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
         {
             for (int count = 0; count < 32 && !session.stop.IsSet && session.ticket.IsValid; count++)
             {
-                if (session.NominalDeadlinePassed) return;
+                if (session.ObservationDeadlinePassed) return;
                 uint nextFrames = packets!.NextPacketSize();
                 if (nextFrames == 0) return;
                 if (session.nominal is { } nominal && session.path!.ProducerQueued >= session.path.CapacityFrames - nominal.MarginFrames)
@@ -506,14 +511,23 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
                     flags |= buffer.Flags; packetPosition = buffer.Position; packetQpc = buffer.Qpc100ns;
                     long now = session.Now100ns();
                     // BUFFER_EMPTY não chega a este ponto. Um primeiro pacote válido também esgota a exceção de uso único.
-                    if (buffer.Frames != nextFrames || buffer.Frames > Capacity ||
-                        (buffer.Flags & ~(Silent | Discontinuity)) != 0 ||
-                        (discardStartup && (acquired != 1 || now - startRequested100ns > StartupDiscardWindow100ns)))
-                        throw new InvalidOperationException("Packet inválido/descontínuo ou timestamp incerto.");
-                    if (buffer.Qpc100ns == 0 || buffer.Qpc100ns > (ulong)now || (ulong)now - buffer.Qpc100ns > 5000000)
-                        throw new InvalidOperationException("Timestamp do packet indisponível/obsoleto.");
+                    if (buffer.Frames != nextFrames)
+                        throw RejectPacket(WasapiCapturePacketRejectionReason.SizeMismatch, nextFrames, buffer, now);
+                    if (buffer.Frames > Capacity)
+                        throw RejectPacket(WasapiCapturePacketRejectionReason.CapacityExceeded, nextFrames, buffer, now);
+                    if ((buffer.Flags & ~(Silent | Discontinuity)) != 0)
+                        throw RejectPacket(WasapiCapturePacketRejectionReason.InvalidFlags, nextFrames, buffer, now);
+                    if (discardStartup && (acquired != 1 || now - startRequested100ns > StartupDiscardWindow100ns))
+                        throw RejectPacket(WasapiCapturePacketRejectionReason.UnexpectedDiscontinuity, nextFrames, buffer, now);
+                    if (buffer.Qpc100ns == 0)
+                        throw RejectPacket(WasapiCapturePacketRejectionReason.MissingTimestamp, nextFrames, buffer, now);
+                    if (buffer.Qpc100ns > (ulong)now)
+                        throw RejectPacket(WasapiCapturePacketRejectionReason.FutureTimestamp, nextFrames, buffer, now);
+                    if ((ulong)now - buffer.Qpc100ns > 5000000)
+                        throw RejectPacket(WasapiCapturePacketRejectionReason.StaleTimestamp, nextFrames, buffer, now);
                     bool silent = (buffer.Flags & Silent) != 0;
-                    if (!silent && buffer.Data == 0) throw new InvalidOperationException("Packet sem dados e sem SILENT.");
+                    if (!silent && buffer.Data == 0)
+                        throw RejectPacket(WasapiCapturePacketRejectionReason.MissingData, nextFrames, buffer, now);
                     Check();
                     if (!discardStartup) captureTiming?.ValidatePacket(buffer.Position, buffer.Frames, buffer.Qpc100ns);
                     var bytes = silent ? ReadOnlySpan<byte>.Empty : new ReadOnlySpan<byte>((void*)buffer.Data, checked((int)buffer.Frames * info.Mix!.BlockAlign));
@@ -553,6 +567,13 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
                 if (session.nominal is not null && path.Dropped != dropped) throw new InvalidOperationException("Nominal/Drop");
             }
         }
+        private InvalidOperationException RejectPacket(WasapiCapturePacketRejectionReason reason,
+            uint announcedFrames, WasapiCaptureBuffer buffer, long now)
+        {
+            packetRejection = new(reason, announcedFrames, buffer.Frames, buffer.Flags, buffer.Position, buffer.Qpc100ns, now);
+            return new InvalidOperationException(reason.ToString());
+        }
+
         private bool CheckCommandAge()
         {
             var command = Volatile.Read(ref session.command);
@@ -615,7 +636,7 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
             finally
             {
                 // Só os modos com codificador explícito podem entregar PCM. O ticket ainda precisa estar válido no Release.
-                if (releaseFlags == 0 && (!session.ticket.IsValid || session.NominalDeadlinePassed)) releaseFlags = Silent;
+                if (releaseFlags == 0 && (!session.ticket.IsValid || session.ObservationDeadlinePassed)) releaseFlags = Silent;
                 if (releaseFlags == Silent) output.Clear();
                 int hr;
                 try { hr = render.ReleaseBuffer(frames, releaseFlags); releaseResult = hr; }
@@ -679,6 +700,8 @@ internal sealed class WasapiSessionCore : IAsyncDisposable
             startResult, stopResult, acquireResult, releaseResult, Done.Task.IsCompleted ? clockStatus : null,
             Interlocked.Read(ref acceptedPackets), Interlocked.Read(ref acceptedFrames),
             Interlocked.Read(ref startupDiscardedPackets), Interlocked.Read(ref startupDiscardedFrames),
-            startupDiscardFlags, startupDiscardPosition, startupDiscardQpc, joined ? motion?.Snapshot() : null, joined ? captureTiming?.Snapshot(session.durationReached && session.failure is null ? session.observationEnd100ns : 0) : null);
+            startupDiscardFlags, startupDiscardPosition, startupDiscardQpc, joined ? motion?.Snapshot() : null,
+            joined ? captureTiming?.Snapshot(session.durationReached && session.failure is null ? session.observationEnd100ns : 0) : null,
+            joined ? packetRejection : null);
     }
 }

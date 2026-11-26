@@ -16,15 +16,18 @@ internal readonly record struct WasapiDriftSample(long Cut100ns, WasapiCheckpoin
     long? OccupancyStart100ns = null, long? ClockAnchorCut100ns = null);
 internal sealed record WasapiDriftReport(bool CorrectionEnabled, WasapiTimingUncertainty Uncertainty,
     long Samples, long AvailableCuts, long MeasuredWindows, long TrackingUpdates, long StartupUnderrunFrames,
-    WasapiDriftReason FinalReason, IReadOnlyList<WasapiDriftSample> Recent);
+    WasapiDriftReason FinalReason, IReadOnlyList<WasapiDriftSample> Recent, WasapiDriftObservationReport? Observation);
 
 // O coordenador é o único autor da política. A captura só lê o último comando e o aplica entre operações.
 internal sealed class WasapiDriftControl(int inputRate, int outputRate, int capacity, bool apply,
-    WasapiTimingUncertainty uncertainty, long origin)
+    WasapiTimingUncertainty uncertainty, long origin, bool observeLongDuration = false)
 {
     public const long Cadence100ns = 1_000_000;
     private const long Warmup100ns = 80_000_000;
-    private const double MaximumWidthPpm = 200;
+    public const double MaximumWidthPpm = 200;
+    private readonly WasapiDriftObservation? observation = observeLongDuration && !apply
+        ? new(inputRate, outputRate, uncertainty, origin)
+        : null;
     private readonly ClockRatioController controller = new(inputRate, outputRate, 10_000_000, capacity, capacity / 2);
     private readonly (long Cut, WasapiDriftPair Pair)[] anchors = new (long, WasapiDriftPair)[36];
     private readonly WasapiDriftSample[] trace = new WasapiDriftSample[128];
@@ -44,7 +47,11 @@ internal sealed class WasapiDriftControl(int inputRate, int outputRate, int capa
         if (result.Checkpoint is not { } cut)
         {
             bool lost = result.Status == WasapiCheckpointStatus.HistoryLost;
-            if (lost && !apply) Baseline = null;
+            if (lost && !apply)
+            {
+                Baseline = null;
+                if (observation is not null) head = count = 0;
+            }
             return Record(new(now, result.Status, lost ? WasapiDriftReason.HistoryLost :
                 now - lastCut >= WasapiDriftMath.MaxAge100ns ? WasapiDriftReason.EvidenceExpired : WasapiDriftReason.CheckpointUnavailable,
                 default, default, 0, null, null, null, null));
@@ -85,10 +92,10 @@ internal sealed class WasapiDriftControl(int inputRate, int outputRate, int capa
             pair.RenderEpoch != anchors[head].Pair.RenderEpoch)) head = count = 0;
         var estimate = ObservePair(pair, lastCut, out long anchorCut);
         if (estimate is null || !capture.CaptureWindows)
-            return Record(current with { Reason = WasapiDriftReason.Waiting });
+            return Record(current with { Reason = WasapiDriftReason.Waiting }, pair);
         measured++;
         current = current with { CorrectionInterval = estimate, ClockAnchorCut100ns = anchorCut };
-        if (!apply) return Record(current with { Reason = WasapiDriftReason.Observed });
+        if (!apply) return Record(current with { Reason = WasapiDriftReason.Observed }, pair);
         if (estimate.Value.Width > MaximumWidthPpm || current.MinimumMeanFrames is not { } minimum ||
             current.MaximumMeanFrames is not { } maximum || capture.FifoPrimingFrames == 0)
             return Record(current with { Reason = WasapiDriftReason.InsufficientPrecision });
@@ -126,7 +133,7 @@ internal sealed class WasapiDriftControl(int inputRate, int outputRate, int capa
         cut >= 0 && point.Qpc100ns != 0 && point.Qpc100ns <= (ulong)cut &&
         (ulong)cut - point.Qpc100ns <= WasapiDriftMath.MaxAge100ns;
 
-    private WasapiDriftSample Record(WasapiDriftSample sample)
+    private WasapiDriftSample Record(WasapiDriftSample sample, WasapiDriftPair? eligible = null)
     {
         if (apply && sample.RequestedPpm is null)
         {
@@ -139,6 +146,7 @@ internal sealed class WasapiDriftControl(int inputRate, int outputRate, int capa
                 MustStop = true;
             }
         }
+        observation?.Observe(sample, eligible);
         trace[(int)(samples++ % trace.Length)] = Last = sample;
         return sample;
     }
@@ -148,6 +156,7 @@ internal sealed class WasapiDriftControl(int inputRate, int outputRate, int capa
         var recent = new WasapiDriftSample[(int)Math.Min(samples, trace.Length)];
         for (int i = 0; i < recent.Length; i++)
             recent[i] = trace[(int)((samples - recent.Length + i) % trace.Length)];
-        return new(apply, uncertainty, samples, available, measured, tracked, startupUnderruns, Last.Reason, Array.AsReadOnly(recent));
+        return new(apply, uncertainty, samples, available, measured, tracked, startupUnderruns, Last.Reason,
+            Array.AsReadOnly(recent), observation?.Snapshot());
     }
 }

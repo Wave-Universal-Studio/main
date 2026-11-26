@@ -219,6 +219,9 @@ public sealed class WasapiSilentTests
         var result = await session.RunAsync(Duration, TestContext.Current.CancellationToken);
         Assert.NotNull(result.Failure); Assert.Equal(flags, result.Capture.PacketFlags); Assert.True(result.Completed);
         Assert.Equal(1, result.Capture.PacketsAcquired); Assert.Equal(1, result.Capture.PacketsReleased); Assert.Equal(0, result.Capture.FramesReleased);
+        var rejection = Assert.IsType<WasapiCapturePacketRejection>(result.Capture.PacketRejection);
+        Assert.Equal(WasapiCapturePacketRejectionReason.InvalidFlags, rejection.Reason);
+        Assert.Equal(flags, rejection.Flags);
     }
     [Theory]
     [InlineData(1u, false)]
@@ -268,6 +271,9 @@ public sealed class WasapiSilentTests
         Assert.True(result.Completed);
         Assert.False(result.TransportObserved);
         Assert.Equal(first | second, result.Capture.PacketFlags);
+        var rejection = Assert.IsType<WasapiCapturePacketRejection>(result.Capture.PacketRejection);
+        Assert.Equal(WasapiCapturePacketRejectionReason.UnexpectedDiscontinuity, rejection.Reason);
+        Assert.Equal(second, rejection.Flags);
         Assert.Equal(new uint[] { 480, 0 }, calls.Input.CaptureReleases.ToArray());
         Assert.Equal((first & 1) != 0 ? 1 : 0, result.Capture.StartupDiscardedPackets);
         Assert.Equal((first & 1) != 0 ? 0 : 1, result.Capture.PacketsAccepted);
@@ -280,6 +286,7 @@ public sealed class WasapiSilentTests
     [InlineData("oversized")]
     [InlineData("zero-size")]
     [InlineData("bad-pointer")]
+    [InlineData("missing-time")]
     [InlineData("stale-time")]
     [InlineData("future-time")]
     public async Task InvalidInitialDiscontinuityReleasesZeroAndStops(string fault)
@@ -292,6 +299,7 @@ public sealed class WasapiSilentTests
         if (fault == "oversized") calls.Input.PacketFrames = 2000;
         if (fault == "zero-size") { calls.Input.AdvertisedFrames = 48; calls.Input.PacketFrames = 0; }
         if (fault == "bad-pointer") calls.Input.NullData = true;
+        if (fault == "missing-time") calls.Input.PacketQpc = 0;
         if (fault == "stale-time") calls.Input.PacketQpc = 1;
         if (fault == "future-time") calls.Input.PacketQpc = ulong.MaxValue;
         await using var session = new WasapiSilentSession(route, new(), calls.Open);
@@ -305,6 +313,23 @@ public sealed class WasapiSilentTests
         Assert.Equal(0, result.Capture.StartupDiscardedPackets);
         Assert.Equal(0, result.Capture.PacketsAccepted);
         Assert.Equal(0, result.ProducedFrames);
+        var rejection = Assert.IsType<WasapiCapturePacketRejection>(result.Capture.PacketRejection);
+        var expected = fault switch
+        {
+            "late" => WasapiCapturePacketRejectionReason.UnexpectedDiscontinuity,
+            "mismatched-size" or "zero-size" => WasapiCapturePacketRejectionReason.SizeMismatch,
+            "oversized" => WasapiCapturePacketRejectionReason.CapacityExceeded,
+            "bad-pointer" => WasapiCapturePacketRejectionReason.MissingData,
+            "missing-time" => WasapiCapturePacketRejectionReason.MissingTimestamp,
+            "stale-time" => WasapiCapturePacketRejectionReason.StaleTimestamp,
+            _ => WasapiCapturePacketRejectionReason.FutureTimestamp
+        };
+        Assert.Equal(expected, rejection.Reason);
+        Assert.Equal(calls.Input.AdvertisedFrames ?? calls.Input.PacketFrames ?? 48u, rejection.AnnouncedFrames);
+        Assert.Equal(calls.Input.PacketFrames ?? 48u, rejection.AcquiredFrames);
+        Assert.Equal(1u, rejection.Flags);
+        Assert.Equal(calls.Input.PacketQpc ?? result.Capture.PacketQpc100ns, rejection.Qpc100ns);
+        Assert.True(rejection.CheckedAt100ns > 0);
     }
 
     [Theory]
