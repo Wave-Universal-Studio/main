@@ -2,6 +2,10 @@
 
 A [validação integrada local de 24/11](PHYSICAL_VALIDATION.md) reúne a regressão Release no Windows real, o ensaio de leitura dos medidores, a pré-verificação do VB-CABLE e a matriz de testes físicos pendentes por fase.
 
+## Ciclo WASAPI e diagnósticos prolongado e acústico
+
+Testes dirigidos cobrem preparação em MTA, preenchimento SILENT, ordem Start/Stop, cancelamento, revalidação do dispositivo, falha parcial, quarentena, geração nova e prazo de encerramento. Os ensaios do estimador preservam limites de frescor e de incerteza, recusam cruzar descontinuidades e separam cobertura contínua da estimativa. A prova acústica é Explicit. Os casos comuns usam sinais sintéticos para validar atraso conhecido, rejeição de ambiguidade e limites QPC sem reprodução nem captura real.
+
 ## Prova de cabo simples — fonte do OBS desativada
 
 Os testes dirigidos distinguem os três valores do snapshot, recusam `DISABLED` no navegador e exercitam o lote com o OBS desligado durante navegador e quietude. A seleção temporária habilita apenas a entrada do cabo. Voltar a Padrão é tratado como conflito quando o original foi Desativado.

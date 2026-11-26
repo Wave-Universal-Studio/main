@@ -24,7 +24,7 @@ public sealed class WasapiNativeAcousticLatencyTests(ITestOutputHelper output)
         Console.WriteLine("Retire o headset dos ouvidos e encoste uma concha a 2–5 cm do FIFINE desmutado.");
         Console.WriteLine("Mantenha o volume baixo. Feche chamadas, reprodução e monitoração do microfone.");
         Console.WriteLine("Esc testa a parada. Enter inicia três sinais de 18 ms em menos de três segundos. Esc cancela.");
-        await WasapiNativeAudibleProofTests.ConfirmStart(token);
+        await WasapiNativeAudibleProofTests.ConfirmStart(token, TimeSpan.FromSeconds(60));
         WasapiNativeSilentTests.AssertNoPreviewProcess();
         WasapiNativeAudibleProofTests.AssertNoOtherTestApphost();
         await CheckIsolationAsync(route, token);
