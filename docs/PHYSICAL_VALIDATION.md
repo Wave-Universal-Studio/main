@@ -44,6 +44,12 @@ A `main` foi sincronizada até `1f7caf6` por fast-forward, com árvore local lim
 
 Os logs e os JSON agregados ficam no armazenamento local ignorado pelo Git. O teste do mixer não abriu o microfone, não produziu som audível e encerrou as duas fontes com sucesso. O relatório e os commits contêm apenas resultados técnicos.
 
+## Reconexão assistida do headset em 26/11/2026
+
+**Aprovada para seleção explícita e medidor.** O Windows registrou a remoção do headset USB durante a observação, com o microfone conectado. O medidor da saída ficou indisponível em 343,7 ms após a detecção da remoção. A reconexão na mesma porta trouxe de volta o mesmo endpoint e a leitura do seu medidor em 167,0 ms após a detecção do retorno. O worker registrou três notificações de catálogo, encerrou sem erro e preservou os seis padrões de áudio do Windows. Os tempos descrevem a observação amostrada, com consultas do catálogo a cada aproximadamente 150 ms. A prova verificou o medidor e a seleção, sem abrir um transporte PCM.
+
+O diagnóstico antes e depois da reconexão continuou a apontar uma sessão ativa de captura no FIFINE, mesmo após a desativação informada pelo operador. A coleta de clock em saída SILENT ficou antes de Start. Latência acústica, estabilidade do transporte e áudio dos dois trajetos instrumentados permanecem em aberto. O mixer já aprovado foi reaproveitado.
+
 ## Pendências por fase
 
 | Fase | Evidência disponível | Pendência física ou de aceitação |
