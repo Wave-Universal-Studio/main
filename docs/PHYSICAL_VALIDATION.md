@@ -60,7 +60,7 @@ Uma tentativa Explicit usou a versão Release da prova no worktree físico, com 
 
 ## Prontidão do navegador e do OBS em 26/11/2026
 
-Após o retorno do headset, o preflight em leitura confirmou os quatro endpoints ativos, pareamento do cabo simples, padrões do Windows fora do cabo e ausência de outros produtores ativos nos pinos de render consultados. O estímulo sintético local e o OBS portátil já verificados foram reaproveitados na preparação. O controle visual da sessão não estava disponível. A prova instrumentada exige que o operador confira e restaure as seleções temporárias e confirme as fases no console. A aprovação manual anterior dos dois fluxos continua registrada.
+Após o retorno do headset, o preflight em leitura confirmou os quatro endpoints ativos, pareamento do cabo simples, padrões do Windows fora do cabo e ausência de outros produtores ativos nos pinos de render consultados. O estímulo sintético local e o OBS portátil já verificados foram reaproveitados na preparação. Com silêncio digital no perfil isolado do navegador, o operador verificou a saída original **Padrão**. A cópia isolada do OBS abriu com uma cena vazia, sem fontes globais ou de captura. Antes e depois da preparação, o FIFINE estava sem sessões ativas. Os seis padrões, volumes, mutes e balanços disponíveis permaneceram iguais. Nenhuma rota temporária foi aplicada. O snapshot do runner atual distingue padrão e endpoint explícito, mas não representa uma fonte original desativada no OBS. As fases instrumentadas não foram iniciadas. A aprovação manual anterior dos dois fluxos continua registrada.
 
 ## Pendências por fase
 
