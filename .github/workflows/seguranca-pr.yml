@@ -1,0 +1,32 @@
+# Verifica a cada PR e push na main se há segredos ou arquivos proibidos versionados.
+# Roda em ubuntu-latest para ser rápido (~10 s) e econômico em minutos do GitHub Actions.
+name: Segurança do repositório
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  segredos:
+    name: Verificar segredos e arquivos proibidos
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Executar varredura de arquivos versionados
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/Check-RepositorySafety.ps1
