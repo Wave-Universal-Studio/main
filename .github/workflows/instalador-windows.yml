@@ -1,0 +1,143 @@
+# Compila sob demanda o instalador Windows x64 (.exe via Inno Setup) do Wave Studio,
+# acompanhado de checksum SHA-256, sem impactar a cota de minutos dos PRs comuns.
+name: Instalador Windows x64
+
+on:
+  workflow_dispatch:
+    inputs:
+      self_contained:
+        description: 'Incluir o runtime .NET 10 no instalador (dispensa instalar .NET na máquina destino)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Cada execução manual mantém seu próprio grupo para não cancelar outros builds manuais.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  instalador:
+    name: Gerar instalador Windows x64
+    runs-on: windows-2025
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Confirmar arquitetura e SDK
+        shell: pwsh
+        run: |
+          if ($env:RUNNER_ARCH -ne 'X64' -or [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -ne 'X64') {
+            throw 'O instalador exige runner e processo Windows x64.'
+          }
+          dotnet --info
+
+      - name: Restaurar e auditar dependências com lockfile
+        run: dotnet restore WaveStudio.slnx --locked-mode -p:NuGetAudit=true -p:NuGetAuditMode=all -p:WarningsAsErrors=NU1900
+
+      - name: Validar build Release sem avisos
+        run: dotnet build WaveStudio.slnx -c Release --no-restore --no-incremental -warnaserror --nologo
+
+      - name: Ler versão do projeto Desktop
+        id: versao
+        shell: pwsh
+        run: |
+          [xml]$csproj = Get-Content 'src/WaveStudio.Desktop/WaveStudio.Desktop.csproj'
+          $v = ($csproj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
+          if ([string]::IsNullOrWhiteSpace($v)) { $v = '0.1.0-alpha' }
+          echo "app_version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Versão detectada: $v"
+
+      - name: Publicar binários Release Windows x64
+        shell: pwsh
+        run: |
+          $selfContained = '${{ inputs.self_contained }}'
+          $publishDir = Join-Path $env:RUNNER_TEMP 'wavestudio-publish'
+          New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
+
+          # Desabilita apenas neste publish a checagem de lockfile por RID para resolver
+          # o runtime pack win-x64 sem alterar os packages.lock.json versionados.
+          dotnet publish src/WaveStudio.Desktop/WaveStudio.Desktop.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained $selfContained `
+            -p:RestorePackagesWithLockFile=false `
+            -p:DebugType=none `
+            -p:DebugSymbols=false `
+            -o "$publishDir" `
+            --nologo
+
+      - name: Garantir Inno Setup (ISCC)
+        shell: pwsh
+        run: |
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $padrao = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+            if (Test-Path $padrao) {
+              $env:PATH = "C:\Program Files (x86)\Inno Setup 6;$env:PATH"
+            } else {
+              choco install innosetup -y --no-progress
+            }
+          }
+          $isccExe = (Get-Command iscc -ErrorAction SilentlyContinue)?.Source
+          if (-not $isccExe -and (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe')) {
+            $isccExe = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          }
+          if (-not $isccExe) {
+            throw 'ISCC.exe (Inno Setup) não encontrado após instalação.'
+          }
+          echo "ISCC_EXE=$isccExe" >> $env:GITHUB_ENV
+
+      - name: Compilar instalador e gerar SHA-256
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP 'wavestudio-publish'
+          $outDir = Join-Path $env:RUNNER_TEMP 'wavestudio-installer'
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+
+          $versao = '${{ steps.versao.outputs.app_version }}'
+          $modo = if ('${{ inputs.self_contained }}' -eq 'true') { 'self-contained' } else { 'framework-dependent' }
+          $shaCurto = $env:GITHUB_SHA.Substring(0, 7)
+          $baseName = "WaveStudio-Setup-$versao-win-x64-$modo-$shaCurto"
+
+          & "$env:ISCC_EXE" `
+            "/DMyAppVersion=$versao" `
+            "/DMyPublishDir=$publishDir" `
+            "/DMyOutputDir=$outDir" `
+            "/DMyOutputBaseFilename=$baseName" `
+            "installer\WaveStudio.iss"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Falha ao compilar o instalador Inno Setup (código $LASTEXITCODE)."
+          }
+
+          $exePath = Join-Path $outDir "$baseName.exe"
+          if (-not (Test-Path $exePath)) {
+            throw "Instalador esperado não encontrado em $exePath."
+          }
+
+          $hash = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $baseName.exe" | Set-Content -Path (Join-Path $outDir 'SHA256SUMS.txt') -Encoding utf8NoBOM
+          Get-ChildItem -Path $outDir | Format-Table Name, Length -AutoSize
+
+      - name: Publicar artefato do instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: wavestudio-instalador-win-x64
+          path: ${{ runner.temp }}/wavestudio-installer/*
+          retention-days: 14
+          if-no-files-found: error
